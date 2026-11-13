@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-14 — Initial backend foundation
+- Added: Express application/server bootstrap, Zod environment parsing, MongoDB connection, Helmet and configured CORS middleware, health route, registration route/validation/service, and a bcrypt-backed User model.
+- Configured: backend runtime dependencies and `dev`/`start` scripts; `backend/.env.example` documents non-secret configuration placeholders.
+- Documented: active health and registration contracts, current data-model scope, local startup, validation status, and security gaps.
+- Not implemented: email verification, login/JWT/session lifecycle, authorization, centralized error handling, rate limiting, CSRF protection, and automated backend tests.
+- Ticket: no matching feature ticket found in the repository.
+
 ## 2026-11-13 — Frontend source structure scaffold
 - Added: app, component, feature, hook, library, page and style directory scaffolding under `frontend/src`; shared Axios and TanStack Query client instances.
 - Changed: moved the app stylesheet into `styles/` and documented the source layout in the frontend README.

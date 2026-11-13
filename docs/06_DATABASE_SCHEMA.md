@@ -2,6 +2,9 @@
 
 > Planning schema; refine exact fields and migrations during implementation. R1 baseline frozen 2026-11-13.
 
+## Current implementation status
+The current `User` model is only a partial implementation of the planned collection: it stores name, normalized unique email, `passwordHash` (`select: false`), status (`active`, `suspended`, or `deleted`) and timestamps. A Mongoose save hook hashes the password with bcrypt cost 12. Email verification, profile fields, soft-delete metadata and user sessions are not implemented. The remaining fields and collections below are approved/planned schema, not implemented persistence.
+
 ## R1 collections
 - **User:** name, normalized unique email, passwordHash (`select:false`), emailVerifiedAt, avatar, bio, isActive/deletedAt, lastSeen, timestamps.
 - **UserSession:** user, session-family identifier, current refresh-token hash, token version/rotation metadata, expiry, revokedAt, device metadata, timestamps. Never store raw refresh tokens.

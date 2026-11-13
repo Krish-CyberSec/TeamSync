@@ -31,6 +31,9 @@ Never authorize merely because an ObjectId exists or a JWT is valid. Resolve res
 ## API protections
 HTTPS in deployed environments; Helmet/security headers; trusted-origin CORS (CORS is not authentication); CSRF protection for cookie flows; rate limits; Zod validation; allowlisted updates; bounded pagination; safe filters/sorts; consistent errors; redacted logs.
 
+## Current backend implementation status
+As of 2026-11-14, the Express app uses Helmet, credentialed CORS restricted to configured `CLIENT_URL`, and Zod validation for registration. Passwords are hashed with bcrypt before persistence, and the registration response omits credentials. These controls do not complete the approved auth/security baseline: email verification, login/token/session flows, CSRF, rate limiting, authorization, and centralized error handling are not implemented. In particular, registration validation errors do not yet have a stable sanitized API error contract. Do not deploy this foundation as a production-ready auth service.
+
 ## Files
 Private task/chat attachments are deferred from R1. Avatar uploads must use allowlisted types, size limits, generated storage keys and content validation. Never serve untrusted active content from the application origin.
 
