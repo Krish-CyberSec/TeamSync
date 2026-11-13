@@ -2,8 +2,12 @@
 
 **R1 baseline:** frozen 2026-11-13. Add tests with each implementation ticket; do not claim a test passed unless it was run.
 
-## Current backend validation status
-As of 2026-11-14, the backend has no automated test files or `test` script. The active health and registration routes, validation failures, duplicate-email behavior, password hashing, configuration failures, and database connection/startup behavior still need automated coverage. Do not treat syntax checks or a manual health request as a substitute for these tests.
+## Current backend validation status (2026-11-14)
+There is no backend `test` script or automated test suite; `backend/tests/` contains only a placeholder. In this documentation update, `node --check` passed for 14 backend JavaScript files. An in-process smoke check confirmed health 200, registration/login Zod validation 400, and JWT sign/verify claims. This did not connect to MongoDB.
+
+The project owner reports manual Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, password hashing in MongoDB, login 200, and invalid credentials 401. These are owner-reported manual checks, not automated coverage and were not independently repeated during this documentation update.
+
+Automated coverage is still required for successful database-backed registration/login, duplicate-key races, password hashing/comparison, inactive account behavior, every error-middleware branch, JWT expiry/type/issuer/algorithm rejection, Session indexes/TTL behavior, and configuration failure paths. A live MongoDB connection and server startup were not verified.
 
 ## Backend unit tests
 Services, permission decisions, project visibility, manager authority, task transitions/assignment eligibility, validators, invitation token lifecycle, refresh-token rotation/reuse detection, session revocation and retention-job eligibility.

@@ -1,41 +1,123 @@
 # API Documentation
 
-> R1 baseline frozen 2026-11-13. This document distinguishes active endpoints from planned contracts; update exact schemas and behavior as implementation progresses.
+> R1 baseline frozen 2026-11-13. This document distinguishes active routes from planned contracts. The examples describe response shapes and do not contain real credentials or tokens.
 
-## Conventions
-Base `/api/v1`; JSON by default; validate body/params/query; bounded pagination. Success: `{ "success": true, "data": {} }`. Error: `{ "success": false, "error": { "code": "...", "message": "..." } }`.
+## Conventions and current error handling
 
-## Authentication/session rules
-Access JWT is short-lived (10–15 minutes) and held in browser memory. Refresh token is in an HttpOnly/Secure cookie, rotated on use and backed by server-side session state; cookie flows require CSRF protection. Logout revokes the current session. Reuse of a rotated refresh token revokes the session family. Never log tokens.
+Base path: `/api/v1`. Requests and responses use JSON. All currently implemented routes are public; no auth middleware is mounted.
 
-## Status codes
-200, 201, 400, 401, 403, 404, 409, 422, 429, 500.
+Success responses use `{ "success": true, "message": "...", "data": ... }` where applicable. Errors use `{ "success": false, "message": "...", "errors": [...] }`; `errors` is included for Zod issues and contains `{ "field", "message" }` entries. The handler maps Zod and Mongoose validation errors to 400, MongoDB duplicate-key errors to 409, and hides 5xx response messages in production. It logs full 5xx Error objects to the server console.
 
 ## Implemented endpoints (verified 2026-11-14)
 
-### Health
-- `GET /health` — returns HTTP 200 with `{ "success": true, "message": "TeamSync backend is running" }`.
+### `GET /api/v1/health`
 
-### Registration
-- `POST /auth/register`
-- Request: strict JSON object with `name` (trimmed, 2–80 characters), `email` (trimmed, valid email, normalized to lowercase), and `password` (at least 12 characters and at most 72 UTF-8 bytes). Unknown fields are rejected by the Zod schema.
-- Success: HTTP 201 with `{ "success": true, "message": "Account registered successfully", "data": { "user": { "id", "name", "email", "status", "createdAt" } } }`. The password or password hash is not returned.
-- Existing email: HTTP 409.
-- The endpoint creates an account but does not verify the email or issue a login/session token. A centralized error middleware is not implemented, so validation and other error response shapes are not yet a stable API contract.
+- Authentication: none.
+- Request body: none.
+- Success: HTTP 200.
 
-## Planned R1 groups
-- Auth: POST `/auth/login`, `/auth/logout`, `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify-email`; GET `/auth/me`.
-- Users: GET/PATCH `/users/me`; GET `/users/me/sessions`; DELETE `/users/me/sessions/:sessionId`; DELETE `/users/me` (account deletion request).
-- Workspaces: POST/GET `/workspaces`; GET/PATCH/DELETE `/workspaces/:id` (DELETE OWNER-only and soft-delete-first).
-- Members/invitations: POST `/workspaces/:id/invitations`; GET `/workspaces/:id/invitations`; POST `/invitations/:token/accept`; POST `/workspaces/:id/invitations/:invitationId/resend`; DELETE `/workspaces/:id/invitations/:invitationId`; GET `/workspaces/:id/members`; PATCH/DELETE `/workspaces/:id/members/:userId`.
-- Projects: POST/GET `/workspaces/:workspaceId/projects`; GET/PATCH/DELETE `/projects/:id`; POST/GET `/projects/:id/members`; PATCH/DELETE `/projects/:id/members/:userId`.
-- Tasks: POST/GET `/projects/:projectId/tasks`; POST/GET `/tasks/personal`; GET/PATCH/DELETE `/tasks/:id`; PATCH `/tasks/:id/status`.
-- Comments: POST/GET `/tasks/:taskId/comments`; PATCH/DELETE `/comments/:id`.
-- Notifications: GET `/notifications`; PATCH `/notifications/:id/read`; PATCH `/notifications/read-all`.
-- Project chat: GET `/projects/:projectId/conversation/messages`; POST `/projects/:projectId/conversation/messages` (only authorized project members).
-- Dashboard: GET `/dashboard/me`; GET `/dashboard/workspace/:id`.
+```json
+{
+  "success": true,
+  "message": "TeamSync backend is running"
+}
+```
 
-## Authorization contract
-Every endpoint documents required identity, active workspace membership, project membership/visibility, action permission and resource ownership. Workspace OWNER/ADMIN can administer projects in their workspace. MANAGER requires explicit project manager authority. Ordinary members need active ProjectMember access. Personal tasks are owner-only. Return a consistent 403 or 404 according to resource-disclosure policy; never rely on client-supplied workspace IDs without validating resource ancestry.
+### `POST /api/v1/auth/register`
 
-For each endpoint document auth, permission, schemas, success/errors, pagination, side effects and tests. Breaking changes require coordinated frontend/docs/tests updates.
+- Authentication: none.
+- Request: strict JSON object; additional properties are rejected.
+
+| Field | Validation |
+|---|---|
+| `name` | String, trimmed, 2–80 characters |
+| `email` | String, trimmed, valid email, normalized to lowercase |
+| `password` | String, minimum 12 characters, maximum 72 UTF-8 bytes |
+
+- Success: HTTP 201. The controller returns a safe user DTO; the password/hash is not returned.
+
+```json
+{
+  "success": true,
+  "message": "Account registered successfully",
+  "data": {
+    "user": {
+      "id": "<user-id>",
+      "name": "<name>",
+      "email": "<normalized-email>",
+      "status": "active",
+      "createdAt": "<timestamp>"
+    }
+  }
+}
+```
+
+- Validation failure: HTTP 400, `message: "Validation failed"` plus `errors`.
+- Duplicate email: HTTP 409. The service pre-check returns `"Email is already registered"`; a concurrent duplicate rejected by MongoDB's unique index (once that index has been built) is mapped to a generic duplicate-record message.
+- No verification email or token/session is issued.
+
+### `POST /api/v1/auth/login`
+
+- Authentication: none.
+- Request: strict JSON object; additional properties are rejected.
+
+| Field | Validation |
+|---|---|
+| `email` | String, trimmed, valid email, normalized to lowercase |
+| `password` | Non-empty string, maximum 72 UTF-8 bytes |
+
+- Success: HTTP 200 with a safe user DTO. No JWT or session cookie is returned.
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "user": {
+      "id": "<user-id>",
+      "name": "<name>",
+      "email": "<normalized-email>",
+      "status": "active"
+    }
+  }
+}
+```
+
+- Validation failure: HTTP 400 with `message: "Validation failed"` and field errors.
+- Invalid email/password: HTTP 401 with generic `"Invalid email or password"`.
+- Non-active account (`suspended` or `deleted`): HTTP 403 with `"Account is unavailable"`. This distinct response can disclose account status.
+- The service explicitly selects `+passwordHash`, checks status, then calls the User model's bcrypt comparison method.
+
+## User-reported manual Postman results
+
+The project owner reports manually testing the following outcomes; these are not automated tests and were not independently repeated during this documentation update.
+
+| Scenario | Reported result |
+|---|---:|
+| Registration | 201 |
+| Duplicate email | 409 |
+| Invalid registration input | 400 |
+| Password hashing | Verified in MongoDB |
+| Login | 200 |
+| Invalid credentials | 401 |
+
+## Token and session primitives (not yet a login/refresh API)
+
+`backend/src/utils/token.js` implements HS256 access/refresh signing and verification. Tokens use issuer `teamsync`, a string `sub`, and a `tokenType`; access tokens expire after 15 minutes, refresh tokens after seven days and include a `sid` session ID. Separate `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` variables are used and are each required by env validation to be at least 32 characters. The config does not enforce that their values differ. Verification restricts the algorithm and issuer and checks token type/required claims.
+
+`backend/src/modules/auth/session.model.js` declares session persistence fields and indexes. The helpers and model are not integrated into login. No endpoint currently creates a session, issues a refresh token, rotates tokens, checks session revocation, logs out, or revokes sessions.
+
+## Planned endpoint groups
+
+The following are approved/planned API contracts, not implemented routes:
+
+- Auth/session: POST `/auth/logout`, `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/verify-email`; GET `/auth/me`.
+- Users: GET/PATCH `/users/me`; GET `/users/me/sessions`; DELETE `/users/me/sessions/:sessionId`; DELETE `/users/me`.
+- Workspaces and invitations: `/workspaces`, `/workspaces/:id`, `/workspaces/:id/invitations`, `/invitations/:token/accept`, and member management endpoints.
+- Projects and members: `/workspaces/:workspaceId/projects`, `/projects/:id`, and `/projects/:id/members`.
+- Tasks/comments: project and personal task endpoints, task status, and task comment endpoints.
+- Notifications: `/notifications` and read-state endpoints.
+- Project chat: `/projects/:projectId/conversation/messages`.
+- Dashboard: `/dashboard/me` and `/dashboard/workspace/:id`.
+
+Every future protected endpoint must document identity, workspace/project authorization, resource ownership, validation, side effects, errors, pagination and tests. Client visibility is not an authorization boundary.

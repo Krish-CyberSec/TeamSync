@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-14 — Backend auth, error and session primitives documented
+- Documented: the current workspace's login route/service/validation, mounted error handler, JWT helpers, and Session model, alongside the existing registration and health endpoints.
+- Clarified: login returns only a user DTO; token helpers and the Session schema are not integrated into login, refresh, logout, or revocation workflows.
+- Recorded: implementation status and user-reported manual Postman/MongoDB outcomes separately from automated test coverage.
+- Verified for this documentation update: 14 backend JavaScript files passed `node --check`; an in-process smoke check confirmed health 200, registration/login validation 400, and JWT sign/verify claims. No MongoDB connection or Postman workflow was independently tested.
+- Source status: these backend implementation changes are present in the working tree but remain uncommitted; this entry documents the inspected workspace state.
+- No new ADR: the JWT/session work follows the existing ADR-009 design; no new architectural decision was identified.
+
 ## 2026-11-14 — Initial backend foundation
 - Added: Express application/server bootstrap, Zod environment parsing, MongoDB connection, Helmet and configured CORS middleware, health route, registration route/validation/service, and a bcrypt-backed User model.
 - Configured: backend runtime dependencies and `dev`/`start` scripts; `backend/.env.example` documents non-secret configuration placeholders.

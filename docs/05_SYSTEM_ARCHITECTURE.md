@@ -24,6 +24,8 @@ This is the approved architecture, not a claim that its runtime integrations exi
 - Revoke sessions on logout, password change and security response.
 - Validate JWT signature, expiry, issuer/audience where configured and token purpose.
 
+Current implementation is partial: `backend/src/utils/token.js` signs/verifies HS256 access JWTs (15 minutes) and refresh JWTs (seven days) with separate configured secrets, issuer, subject and token-type claims; the refresh token includes `sid`. `backend/src/modules/auth/session.model.js` defines persisted session metadata and indexes. These helpers/model are not called by login: login currently checks credentials and returns a user DTO, without a JWT or cookie. Session creation, refresh rotation/reuse detection, logout/revocation, CSRF, authentication middleware and workspace authorization remain unimplemented. This does not change ADR-009's approved transport/lifecycle design.
+
 ## Backend request flow
 Browser → HTTPS → Express route → rate limiting/authentication/CSRF/request validation/authorization middleware → controller → service → Mongoose → MongoDB. Socket.IO authenticates against the same identity/session model and authorizes each room join and sensitive event. Persist state before emitting.
 
@@ -33,9 +35,9 @@ Route-level screens and feature components will use TanStack Query for server re
 ## Backend modules
 R1: auth, users, workspaces, members, projects, tasks, comments, notifications, activities, project chat, analytics. Calendar and file modules are staged for later releases; do not build R2 scope as part of R1 without approval.
 
-The backend foundation is partially implemented (verified 2026-11-14). `backend/src/server.js` validates configuration, connects to MongoDB, and starts the Express app; `backend/src/app.js` configures Helmet, credentialed CORS and JSON parsing, then mounts health and registration routes under `/api/v1`. The environment schema uses Zod. Registration validates input, normalizes email, checks for an existing account, and persists a user whose password is hashed with bcrypt. `backend/package.json` has runtime dependencies and `dev`/`start` scripts.
+The backend foundation is partially implemented (verified 2026-11-14). `backend/src/server.js` validates configuration, connects to MongoDB before listening, and handles SIGINT/SIGTERM by closing the HTTP server and then Mongoose. `backend/src/app.js` configures Helmet, credentialed CORS restricted to `CLIENT_URL`, JSON parsing, and the mounted error handler; it mounts public health and auth routes under `/api/v1`. Zod validates configuration and strict registration/login bodies. Registration and login controllers call services; the services use the Mongoose User model and bcrypt. The User model and Session model, plus JWT utilities, are implemented to the extent described in the database and API documents. Runtime dependencies and `dev`/`start` scripts are declared in `backend/package.json`.
 
-This is not yet a complete auth or security implementation. There is no email verification, login, JWT/session issuance or refresh rotation, authorization middleware, rate limiting, CSRF protection, or automated test suite. `backend/src/middleware/error.middleware.js` is empty and is not mounted, so stable centralized API error responses are not implemented. The health and registration endpoints are the only active routes; other R1 domains remain planned.
+The three active routes are `GET /api/v1/health`, `POST /api/v1/auth/register`, and `POST /api/v1/auth/login`. Login does not issue tokens; JWT/session utilities are not integrated. Email verification, refresh rotation/reuse detection, logout/revocation, CSRF, rate limiting, authentication middleware, workspace/resource authorization, and automated backend tests remain unimplemented. Live MongoDB connection/startup has not been verified. Other R1 domain modules remain planned.
 
 ## Layer rules
 Routes define endpoints; middleware handles cross-cutting concerns; controllers translate HTTP; services implement business rules; models/data access persist; socket handlers authorize and deliver events.

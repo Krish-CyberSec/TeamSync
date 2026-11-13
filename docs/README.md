@@ -9,7 +9,7 @@
 | 05_SYSTEM_ARCHITECTURE.md | Modules, components, integrations |
 | 06_DATABASE_SCHEMA.md | Collections, relationships, indexes |
 | 07_API_DOCUMENTATION.md | Endpoint contracts |
-| 08_FEATURE_ROADMAP.md | Releases, priorities, scope |
+| 08_FEATURE_ROADMAP.md | Releases, priorities, scope and implementation progress |
 | 09_TESTING_STRATEGY.md | Test levels and quality gates |
 | 10_DEPLOYMENT_GUIDE.md | Environments, setup, deployment |
 | 11_CHANGELOG.md | Meaningful changes |

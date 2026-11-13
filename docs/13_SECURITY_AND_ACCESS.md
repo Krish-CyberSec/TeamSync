@@ -31,8 +31,19 @@ Never authorize merely because an ObjectId exists or a JWT is valid. Resolve res
 ## API protections
 HTTPS in deployed environments; Helmet/security headers; trusted-origin CORS (CORS is not authentication); CSRF protection for cookie flows; rate limits; Zod validation; allowlisted updates; bounded pagination; safe filters/sorts; consistent errors; redacted logs.
 
-## Current backend implementation status
-As of 2026-11-14, the Express app uses Helmet, credentialed CORS restricted to configured `CLIENT_URL`, and Zod validation for registration. Passwords are hashed with bcrypt before persistence, and the registration response omits credentials. These controls do not complete the approved auth/security baseline: email verification, login/token/session flows, CSRF, rate limiting, authorization, and centralized error handling are not implemented. In particular, registration validation errors do not yet have a stable sanitized API error contract. Do not deploy this foundation as a production-ready auth service.
+## Current backend implementation status (2026-11-14)
+
+Implemented in the current workspace:
+- Express uses Helmet, credentialed CORS restricted to `CLIENT_URL`, JSON parsing, and a mounted centralized error handler. CORS is not authentication.
+- Registration/login use strict Zod schemas. Registration requires a 12-character password minimum and limits UTF-8 input to bcrypt's 72-byte maximum.
+- User passwords are hashed with bcrypt cost 12; `passwordHash` is excluded from ordinary Mongoose queries. The registration/login responses omit the password and hash.
+- Error handling maps Zod and Mongoose validation failures to 400, duplicate-key errors to 409, and hides 5xx response messages in production.
+- JWT sign/verify utilities use HS256, separate access/refresh secret variables, issuer `teamsync`, subject and token-type claims; access lifetime is 15 minutes, refresh lifetime seven days, and refresh includes `sid`. Env validation requires each secret to be at least 32 characters but does not check that the secret values differ.
+- Session schema declares a unique hidden refresh-token hash, expiry/revocation/replacement/last-use fields, timestamps and a MongoDB TTL index.
+
+These components do not complete authentication or authorization. Login returns a user DTO but does not issue tokens or cookies. JWT/session primitives are not integrated; there is no session creation, refresh rotation/reuse detection, logout/revocation, token-to-session check, authentication middleware, workspace authorization, email verification, CSRF protection, or rate limiting. All current endpoints are public.
+
+Known security limitations: registration returns 409 for an existing email; login returns 403 for non-active accounts, which may expose account status. The production response hides 5xx details, but the error middleware logs full 5xx Error objects, while startup/database failures log error messages. Review and redact server logs before production. Live MongoDB startup was not verified during this documentation update. Do not deploy this foundation as a production-ready auth service.
 
 ## Files
 Private task/chat attachments are deferred from R1. Avatar uploads must use allowlisted types, size limits, generated storage keys and content validation. Never serve untrusted active content from the application origin.

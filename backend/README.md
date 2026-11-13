@@ -1,47 +1,66 @@
 # TeamSync backend
 
-The backend foundation is partially implemented. It currently provides an Express application, validated environment configuration, a MongoDB connection, health and registration endpoints, and a Mongoose user model. Authentication sessions, email verification, centralized error handling, authorization, and automated tests are not implemented.
+The backend is an ES-module Node.js/Express modular-monolith foundation. Implemented capabilities include validated environment configuration, a Mongoose connection, health and auth routes, a User model, login/registration services, error handling, JWT utilities, and a Session model. JWT utilities and the Session model are not yet integrated into login or refresh/logout workflows.
 
-## Run locally
-
-1. Copy `.env.example` to `.env` and set `MONGO_URI` to a reachable MongoDB instance.
-2. From this directory, install dependencies with `npm ci`.
-3. Start the development server with `npm run dev` (or `npm start` without Nodemon).
-4. The health endpoint is `GET /api/v1/health`. Registration is `POST /api/v1/auth/register`.
-
-The server connects to MongoDB before listening. `MONGO_URI` is currently optional in the environment schema, but a working value is required for server startup. JWT secrets are placeholders for planned session functionality and are not used by the current endpoints.
-
-## Implemented behavior
-
-- Environment variables are parsed with Zod; invalid values terminate startup.
-- Express uses Helmet, JSON body parsing, and credentialed CORS restricted to `CLIENT_URL`.
-- The health route returns a successful JSON response.
-- Registration validates a strict `{ name, email, password }` body, normalizes email, enforces a 12-character minimum and bcrypt's 72-byte input limit, and rejects an existing email with HTTP 409.
-- User passwords are hashed with bcrypt before persistence. The model exposes the password hash only when explicitly selected.
-
-The registration endpoint does not yet verify email ownership or establish a login session. Registration validation/database errors also do not yet have a centralized, stable API error response; `src/middleware/error.middleware.js` is currently an empty placeholder and is not mounted.
+## Structure and responsibilities
 
 ```text
 backend/
 ├── src/
-│   ├── config/
+│   ├── app.js                         # Express middleware and versioned routes
+│   ├── server.js                      # DB-first startup and signal shutdown
+│   ├── config/env.js                  # dotenv loading and Zod environment schema
+│   ├── database/connection.js         # Mongoose connection
+│   ├── middleware/error.middleware.js
 │   ├── modules/
-│   │   ├── auth/
-│   │   ├── users/
-│   │   ├── workspaces/
-│   │   ├── projects/
-│   │   ├── tasks/
-│   │   ├── notifications/
-│   │   └── chat/
-│   ├── middleware/
-│   ├── database/
-│   ├── utils/
-│   ├── app.js
-│   └── server.js
-├── tests/
-├── .env
+│   │   ├── auth/                      # routes, controllers, validation, services, Session model
+│   │   ├── health/                    # health route/controller
+│   │   └── users/                     # User model
+│   └── utils/token.js                 # access/refresh JWT sign and verify helpers
+├── tests/                             # no automated tests implemented yet
 ├── .env.example
 └── package.json
 ```
 
-Keep local secrets in `.env`; use `.env.example` for blank, non-secret configuration placeholders. Never commit `.env` or put server secrets in frontend `VITE_` variables. No automated test script is configured yet.
+Routes register paths, controllers validate and translate HTTP requests, services implement registration/login decisions, Mongoose models handle persistence, and middleware formats errors. Current auth endpoints are public and do not issue tokens.
+
+## Dependencies and scripts
+
+Runtime dependencies are `bcrypt`, `cors`, `dotenv`, `express`, `helmet`, `jsonwebtoken`, `mongoose`, and `zod`; `nodemon` is a development dependency. The declared versions/ranges are in `package.json`.
+
+- `npm run dev` — start `src/server.js` with Nodemon.
+- `npm start` — start `src/server.js`.
+- No `test` script or automated backend test suite is configured.
+
+## Local development and environment
+
+Run commands from this directory so `dotenv/config` loads `backend/.env`:
+
+1. Copy `.env.example` to `.env`.
+2. Set `MONGO_URI` to a reachable MongoDB instance.
+3. Set `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to separate private values of at least 32 characters.
+4. Run `npm ci`, then `npm run dev`.
+
+The checked-in example contains only blank placeholders. `MONGO_URI` is optional in the Zod schema, but a usable value is necessary for Mongoose connection and server startup. `NODE_ENV` defaults to `development`; `PORT` to `5000`; `CLIENT_URL` to `http://localhost:5173`; `LOG_LEVEL` to `info`. The JWT secrets are required by configuration validation, although tokens are not issued by the current login flow. Never commit `.env` or use server secrets in frontend `VITE_` variables.
+
+The server waits for MongoDB before listening. On `SIGINT` or `SIGTERM`, it stops accepting HTTP connections, closes the Mongoose connection, then exits. This is the current shutdown implementation; it has no explicit shutdown timeout.
+
+## Implemented API
+
+Base path: `/api/v1`. The health route is public.
+
+| Method | Path | Purpose | Success |
+|---|---|---|---|
+| GET | `/api/v1/health` | Health check | 200 |
+| POST | `/api/v1/auth/register` | Register a user | 201 |
+| POST | `/api/v1/auth/login` | Check credentials and return a user DTO | 200 |
+
+Registration accepts a strict `name`, `email`, and `password` object. Names are trimmed and limited to 2–80 characters; email is trimmed, validated, and lowercased; passwords require at least 12 characters and no more than 72 UTF-8 bytes. Login accepts a strict `email` and `password` object, with a non-empty password capped at 72 UTF-8 bytes. Both endpoints are currently unauthenticated. Login returns no JWT or session cookie.
+
+The error middleware maps Zod and Mongoose validation errors to 400, duplicate-key conflicts to 409, and hides 5xx messages in production. Login returns 401 for invalid credentials and 403 for a non-active account. See [API documentation](../docs/07_API_DOCUMENTATION.md) for request/response shapes and known limitations.
+
+## Current security and verification limits
+
+The User model stores name, normalized unique email, `passwordHash` (`select: false`), status (`active`, `suspended`, `deleted`) and Mongoose timestamps. Its pre-save hook bcrypt-hashes modified password values with cost 12; `comparePassword` uses `bcrypt.compare`. JWT helpers use separate secret variables, HS256, issuer/type/subject claims, a 15-minute access lifetime, and a seven-day refresh lifetime. The Session model stores a hidden unique refresh-token hash and expiry/revocation/replacement/last-use metadata with a TTL index. These primitives do not yet provide login token issuance, refresh rotation, logout/revocation workflows, authentication middleware, or workspace authorization.
+
+Email verification, rate limiting, CSRF protection, automated backend tests, and an authorization layer are not implemented. The error middleware logs full 5xx Error objects to the server console; review/redact server-side logs before production. Live MongoDB startup was not verified during the documentation update. The Postman results in the implementation-status document were reported by the project owner and were not independently repeated here.

@@ -3,11 +3,13 @@
 > Planning schema; refine exact fields and migrations during implementation. R1 baseline frozen 2026-11-13.
 
 ## Current implementation status
-The current `User` model is only a partial implementation of the planned collection: it stores name, normalized unique email, `passwordHash` (`select: false`), status (`active`, `suspended`, or `deleted`) and timestamps. A Mongoose save hook hashes the password with bcrypt cost 12. Email verification, profile fields, soft-delete metadata and user sessions are not implemented. The remaining fields and collections below are approved/planned schema, not implemented persistence.
+The implemented `User` model stores `name`, `email`, `passwordHash` (`select: false`), `status` (`active`, `suspended`, or `deleted`) and Mongoose timestamps. Email is trimmed/lowercased, regex-validated, and declares a unique index. A save hook hashes modified passwords with bcrypt cost 12; `comparePassword` checks candidates. Email verification, profile fields, and soft-delete metadata are still planned.
+
+The implemented `Session` model has a required User reference, a required hidden unique `tokenHash`, `expiresAt`, nullable `revokedAt`, nullable `replacedBySession`, nullable `lastUsedAt`, timestamps, a user index, unique token-hash index, and TTL index on `expiresAt`. The TTL index asynchronously cleans up expired records; it is not an authorization check. The model does not itself hash tokens or implement session creation, refresh rotation/reuse detection, logout, or revocation workflows. Physical MongoDB index creation and live connection were not verified in this documentation update.
 
 ## R1 collections
-- **User:** name, normalized unique email, passwordHash (`select:false`), emailVerifiedAt, avatar, bio, isActive/deletedAt, lastSeen, timestamps.
-- **UserSession:** user, session-family identifier, current refresh-token hash, token version/rotation metadata, expiry, revokedAt, device metadata, timestamps. Never store raw refresh tokens.
+- **User:** implemented fields are name, normalized unique email, passwordHash (`select:false`), status and timestamps. Planned additions include emailVerifiedAt, avatar, bio, deletedAt and lastSeen.
+- **Session:** implemented fields are user → User, tokenHash (`select:false`, unique), expiresAt, revokedAt, replacedBySession → Session, lastUsedAt and timestamps. Planned rotation/family metadata and workflows are not implemented. Store only a cryptographic hash of refresh tokens; never store raw tokens.
 - **Workspace:** name, description, createdBy → User, deletedAt, timestamps.
 - **WorkspaceMember:** workspace → Workspace, user → User, role (`OWNER/ADMIN/MANAGER/MEMBER`), status, joinedAt, timestamps.
 - **Invitation:** workspace, normalized invitee email, intended role, tokenHash, expiresAt, status, invitedBy, resentAt/revokedAt, timestamps. Single-use; seven-day expiry.
@@ -24,7 +26,7 @@ The current `User` model is only a partial implementation of the planned collect
 Event, Reminder, Attachment, Document, TimeEntry, ProjectTemplate, direct/group Conversation variants and advanced UserPreference fields are staged; add only when their release is approved.
 
 ## Relationships
-User 1—N WorkspaceMember; Workspace 1—N WorkspaceMember; Workspace 1—N Project; Project 1—N ProjectMember; Project 1—N Task; personal Task belongs to one owner and has no project; Task 1—N TaskComment; project Conversation 1—N Message; User 1—N Notification; Workspace/Project 1—N Activity; User 1—N UserSession.
+User 1—N Session; User 1—N WorkspaceMember; Workspace 1—N WorkspaceMember; Workspace 1—N Project; Project 1—N ProjectMember; Project 1—N Task; personal Task belongs to one owner and has no project; Task 1—N TaskComment; project Conversation 1—N Message; User 1—N Notification; Workspace/Project 1—N Activity.
 
 ## Required indexes
 - User `{ email: 1 }` unique (normalized email).
@@ -35,6 +37,6 @@ User 1—N WorkspaceMember; Workspace 1—N WorkspaceMember; Workspace 1—N Pro
 - Task `{ project: 1, status: 1, position: 1 }`; `{ assignedTo: 1, status: 1 }`; `{ owner: 1, project: 1, dueDate: 1 }` as query patterns warrant.
 - Message `{ conversation: 1, createdAt: -1 }`.
 - Activity `{ workspace: 1, createdAt: -1 }` and project-scoped query index as required.
-- UserSession `{ user: 1, revokedAt: 1 }` and session-family lookup index.
+- Session `{ user: 1 }`, unique `{ tokenHash: 1 }`, and TTL `{ expiresAt: 1 }` indexes are declared in the current model. A future rotation workflow may need additional session-family/revocation query indexes.
 
 Validate indexes against actual query patterns and explain plans. Soft-delete and retention jobs must be designed before destructive cascades.
