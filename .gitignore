@@ -7,7 +7,8 @@ coverage/
 .DS_Store
 *.log
 .cursor/
-Agents.md
+AGENTS.md
+PROJECT_CONTEXT.md
 Readme.md
 !backend/README.md
 
