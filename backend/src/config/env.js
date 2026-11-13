@@ -11,9 +11,8 @@ const envSchema = z.object({
 
   MONGO_URI: z.string().optional(), // for MongoDB connection string validation
 
-  JWT_ACCESS_SECRET: z.string().optional(), // for JWT access token secret validation
-
-  JWT_REFRESH_SECRET: z.string().optional(), // for JWT refresh token secret validation
+  JWT_ACCESS_SECRET: z.string().min(32), // for JWT access token secret validation
+  JWT_REFRESH_SECRET: z.string().min(32), // for JWT refresh token secret validation
 
   CLIENT_URL: z.string().url().default("http://localhost:5173"), // for client URL validation
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+// Registration schema for validating user registration data
 export const registerSchema = z.object({
   name: z
     .string()
@@ -19,5 +20,21 @@ export const registerSchema = z.object({
     .refine(
       (password) => Buffer.byteLength(password, "utf8") <= 72,
       "Password cannot exceed 72 bytes"
+    ),
+}).strict();
+
+// Login schema for validating user login data
+
+export const loginSchema = z.object({
+  email: z.string()
+    .trim()
+    .email("Please provide a valid email address")
+    .toLowerCase(),
+
+  password: z.string()
+    .min(1, "Password is required")
+    .refine(
+      (password) => Buffer.byteLength(password, "utf8") <= 72,
+      "Invalid password"
     ),
 }).strict();

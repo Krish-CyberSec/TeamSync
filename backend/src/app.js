@@ -4,6 +4,7 @@ import cors from "cors";
 import { env } from "./config/env.js";
 import healthRouter from "./modules/health/health.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import { errorHandler } from "./middleware/error.middleware.js";
 const app = express();
 
 // CORS middleware to allow requests from the client URL specified in the environment variables
@@ -24,5 +25,8 @@ app.use("/api/v1/health", healthRouter);
 
 // Importing the authentication routes
 app.use("/api/v1/auth", authRoutes);
+
+// Error handling middleware to catch and respond to errors in a standardized format
+app.use(errorHandler);
 
 export default app;
