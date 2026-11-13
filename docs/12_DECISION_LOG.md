@@ -67,6 +67,19 @@ All decisions below are approved product/architecture baselines as of 2026-11-13
 - Decision: MongoDB is source of truth; persist a state change/message before Socket.IO broadcast.
 - Consequence: Use transactions where needed and evaluate outbox for reliable event fan-out.
 
+## ADR-014 — Frontend architecture and state management
+- Date: 2026-11-13 | Status: ACCEPTED (architectural choices); integration details remain OPEN.
+- Context: TeamSync needs a maintainable frontend that can grow across personal productivity and multiple workspace features without mixing remote server data with local UI state. The repository has the initial Vite/React scaffold and declared frontend dependencies, but most application integrations are not yet wired.
+- Decision:
+  - Organize frontend code by feature, with shared application infrastructure, reusable UI, common and layout components, and feature-specific modules.
+  - Use React Router for client-side routing.
+  - Use TanStack Query for server state and Zustand for client-side global state; keep transient view state local to React components where appropriate.
+  - Use Axios for HTTP communication, Lucide React for icons, and Tailwind CSS v4 for styling.
+- Alternatives: A flat component-first source tree; hand-built routing; React Context or Redux for global state; component-local fetch state or another server-state library; the browser Fetch API; another icon library; CSS Modules or a component framework instead of Tailwind.
+- Rationale: Feature boundaries align code with TeamSync product domains. Separating remote server state from client-owned UI state avoids duplicated ownership and makes caching, loading, mutation and error behavior explicit. The selected libraries are already declared in the frontend package and fit the approved React/Vite stack.
+- Consequences: Keep shared infrastructure small and feature modules cohesive. Do not treat installed packages or scaffold directories as implemented functionality. Route definitions, provider wiring, store contents, API error/auth handling, real-time client integration, semantic token definitions and component APIs remain implementation details to be designed and tested. Existing security decisions, including memory-only access-token handling and CSRF-protected refresh-cookie flows, remain unchanged.
+- Affected documentation and code: `PROJECT_CONTEXT.md`, `docs/04_UI_UX_GUIDELINES.md`, `docs/05_SYSTEM_ARCHITECTURE.md`, `docs/11_CHANGELOG.md`, `AGENTS.md`, `.cursor/rules/00-project.mdc`, `.cursor/rules/40-frontend.mdc`; `frontend/package.json`, `frontend/package-lock.json`, and the `frontend/src` scaffold.
+
 ## Open implementation choices (not blockers to R1 design)
 - Production email provider and hosting selection.
 - Exact permission catalogue and manager permission granularity within projects.

@@ -18,6 +18,15 @@ Auth; My Day; workspace switcher/overview; project list/detail; Kanban; task det
 ## Components
 Button, Input, Select, Textarea, Badge, Avatar, Card, Modal, Dropdown, Tabs, Tooltip, Toast, Skeleton, EmptyState, Sidebar, Header, WorkspaceSwitcher.
 
+## Frontend component organization
+These are design and organization guidelines, not a claim that the components or screens are already implemented:
+- Put reusable primitives (for example Button, Input, Badge and Modal) in `components/ui/`.
+- Put cross-feature components in `components/common/` and shared navigation/page structure such as Sidebar and Header in `components/layout/`.
+- Keep feature-specific components beside their feature behavior under `features/<feature>/`; route-level compositions belong in `pages/`.
+- Prefer semantic design tokens for color, surfaces, borders, typography and state so components do not encode theme-specific values independently.
+
+The project uses Tailwind CSS v4 for utility styling, with shared styles/tokens maintained centrally rather than duplicated in feature components. The current app imports Tailwind and uses utility classes, but a semantic token system, reusable component library and themed screens have not yet been implemented.
+
 ## Interaction
 Forms show validation; destructive actions require confirmation; drag-and-drop reconciles with server and rolls back on rejection; major screens have loading/empty/error/success states; keyboard focus is visible; don't rely on color alone; respect reduced motion.
 

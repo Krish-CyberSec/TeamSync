@@ -3,7 +3,18 @@
 **Status:** R1 baseline frozen — 2026-11-13
 
 ## Style and stack
-Modular monolith. React + Vite + Tailwind; Node.js + Express; MongoDB + Mongoose; Zod; Socket.IO; Jest + Supertest; OpenAPI/Swagger. Passwords use bcrypt. Do not introduce microservices without a new approved decision.
+Modular monolith. React + Vite + Tailwind CSS v4; React Router; TanStack Query; Zustand; Axios; Lucide React; Node.js + Express; MongoDB + Mongoose; Zod; Socket.IO; Jest + Supertest; OpenAPI/Swagger. Passwords use bcrypt. Do not introduce microservices without a new approved decision.
+
+## Frontend architecture
+The approved frontend organization is feature-oriented:
+- `app/` owns application bootstrap concerns, routing, providers and app-wide stores.
+- `features/` groups feature-specific components and behavior by domain, including auth, workspace, projects, tasks, notifications and chat.
+- `components/ui/` contains reusable primitives; `components/common/` contains shared cross-feature components; `components/layout/` contains shared page and navigation structure.
+- `pages/` composes route-level screens; `hooks/` holds genuinely shared hooks; `lib/` holds shared infrastructure such as the Axios and TanStack Query client instances; `styles/` holds shared styles; `assets/` holds static assets.
+
+Use React Router for routing, TanStack Query for remote server state, and Zustand for client-side global state. Keep short-lived component/view state local to React where practical. Do not duplicate server-owned records in a client store. Any access JWT remains memory-only under ADR-009; the exact store ownership for auth state is an implementation detail and must not change the approved token transport. Axios is the HTTP client, Lucide React is the icon set, and Tailwind CSS v4 is the styling utility layer. Design tokens and theme behavior follow the UI guidelines.
+
+This is the approved architecture, not a claim that its runtime integrations exist. As verified on 2026-11-13, `frontend/src` has the directory scaffold and shared Axios/QueryClient instances, but `main.jsx` mounts only React StrictMode and `App`; there is no configured router, application provider, Zustand store, feature implementation or API request integration. The instances are not yet consumed by the application.
 
 ## Authentication/session architecture
 - Access JWT lifetime: 10–15 minutes.
@@ -13,8 +24,11 @@ Modular monolith. React + Vite + Tailwind; Node.js + Express; MongoDB + Mongoose
 - Revoke sessions on logout, password change and security response.
 - Validate JWT signature, expiry, issuer/audience where configured and token purpose.
 
-## Request flow
+## Backend request flow
 Browser → HTTPS → Express route → rate limiting/authentication/CSRF/request validation/authorization middleware → controller → service → Mongoose → MongoDB. Socket.IO authenticates against the same identity/session model and authorizes each room join and sensitive event. Persist state before emitting.
+
+## Planned frontend communication flow (not yet implemented)
+Route-level screens and feature components will use TanStack Query for server reads and mutations, which will call the shared Axios client at the versioned `/api/v1` base. The current Axios instance uses `VITE_API_BASE_URL` when configured and otherwise defaults to `/api/v1`. The Express API remains responsible for input validation, authentication, authorization and tenant/resource isolation; client-side navigation or visibility is never an access-control boundary. The browser follows ADR-009: access JWT in memory, refresh token in an HttpOnly/Secure cookie with CSRF protection, rotation and reuse detection. Durable data remains in MongoDB; Socket.IO is delivery only and events follow persistence. The frontend currently has no API calls or Socket.IO client integration, and its intended route/provider composition is still open.
 
 ## Backend modules
 R1: auth, users, workspaces, members, projects, tasks, comments, notifications, activities, project chat, analytics. Calendar and file modules are staged for later releases; do not build R2 scope as part of R1 without approval.

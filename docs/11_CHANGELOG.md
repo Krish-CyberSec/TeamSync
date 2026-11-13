@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-13 — Frontend source structure scaffold
+- Added: app, component, feature, hook, library, page and style directory scaffolding under `frontend/src`; shared Axios and TanStack Query client instances.
+- Changed: moved the app stylesheet into `styles/` and documented the source layout in the frontend README.
+- Configured: React/Vite and Tailwind CSS v4 build plugins; frontend package declarations and lockfile include React Router, TanStack Query, Zustand, Axios, Lucide React and Tailwind CSS. The shared API client defaults to `/api/v1` and accepts `VITE_API_BASE_URL`.
+- Verified: frontend lint and production build completed successfully.
+- Deferred: router and application-provider wiring, Zustand stores, feature UI, API calls/auth handling, Socket.IO client, theme tokens and persistent theme behavior. Installed dependencies and scaffold directories are not implemented product functionality.
+
 ## 2026-11-13 — R1 baseline approved and frozen
 - Approved private-by-default projects with ProjectMember access; workspace OWNER/ADMIN administration and explicit manager project authority.
 - Confirmed personal tasks are owner-only and non-shareable in R1.
