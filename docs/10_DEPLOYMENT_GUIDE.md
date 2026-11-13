@@ -8,6 +8,8 @@ Supported Node.js version, npm, Git, MongoDB local or Atlas. Optional storage/em
 ## Planned backend environment
 `NODE_ENV`, `PORT`, `MONGO_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, token expiry values, `CLIENT_URL`, `LOG_LEVEL`. Add storage/email settings only after provider selection.
 
+The scaffold includes `backend/.env.example` with blank, non-secret placeholders and a local `backend/.env` that is excluded by the repository ignore rules. Environment loading and validation are not implemented yet. Never commit `.env` or put server secrets in frontend `VITE_` variables.
+
 ## Planned frontend environment
 `VITE_API_BASE_URL=http://localhost:5000/api/v1`
 

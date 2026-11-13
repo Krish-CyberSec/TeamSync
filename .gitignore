@@ -9,5 +9,6 @@ coverage/
 .cursor/
 Agents.md
 Readme.md
+!backend/README.md
 
 

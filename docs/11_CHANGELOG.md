@@ -7,6 +7,11 @@
 - Verified: frontend lint and production build completed successfully.
 - Deferred: router and application-provider wiring, Zustand stores, feature UI, API calls/auth handling, Socket.IO client, theme tokens and persistent theme behavior. Installed dependencies and scaffold directories are not implemented product functionality.
 
+## 2026-11-13 — Backend source structure scaffold
+- Added: initial backend config, module, middleware, database, utility and test directories; placeholder `app.js` and `server.js`; package metadata and README.
+- Configured: blank local environment file and non-secret `.env.example`; repository ignore rules exclude `.env`.
+- Deferred: runtime dependencies, environment validation, Express application/server, database connection, routes/controllers/services, authentication, and automated tests. The scaffold does not provide a runnable backend.
+
 ## 2026-11-13 — R1 baseline approved and frozen
 - Approved private-by-default projects with ProjectMember access; workspace OWNER/ADMIN administration and explicit manager project authority.
 - Confirmed personal tasks are owner-only and non-shareable in R1.

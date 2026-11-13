@@ -33,6 +33,8 @@ Route-level screens and feature components will use TanStack Query for server re
 ## Backend modules
 R1: auth, users, workspaces, members, projects, tasks, comments, notifications, activities, project chat, analytics. Calendar and file modules are staged for later releases; do not build R2 scope as part of R1 without approval.
 
+The backend directory is currently scaffolding, not an implemented service. Its initial module folders are auth, users, workspaces, projects, tasks, notifications and chat; other R1 domains remain part of the architecture scope but do not yet have directories or implementation. `src/app.js` and `src/server.js` are placeholders. There are no backend runtime dependencies, active routes, middleware, database connection, or automated tests yet.
+
 ## Layer rules
 Routes define endpoints; middleware handles cross-cutting concerns; controllers translate HTTP; services implement business rules; models/data access persist; socket handlers authorize and deliver events.
 
