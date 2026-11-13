@@ -6,3 +6,9 @@ dist/
 coverage/
 .DS_Store
 *.log
+.cursor/
+Agents.md
+Project_Context.md
+Readme.md
+
+
