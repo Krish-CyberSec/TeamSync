@@ -13,6 +13,7 @@ TeamSync is a collaboration and personal-productivity platform for individuals a
 - [Local setup](#local-setup)
 - [Implemented API](#implemented-api)
 - [Documentation](#documentation)
+- [Intellectual Property and Licensing](#intellectual-property-and-licensing)
 
 ## Product and status
 
@@ -154,3 +155,17 @@ See [API Documentation](docs/07_API_DOCUMENTATION.md) for exact requests, respon
 ## Documentation
 
 The [documentation index](docs/README.md) links product requirements, architecture, schema, API contracts, security, testing, deployment, ADRs and roadmap. The [Developer Guide](docs/14_DEVELOPER_GUIDE.md) describes the current implementation patterns and contribution workflow.
+
+## Intellectual Property and Licensing
+
+TeamSync is intended to be proprietary commercial software. This public repository does not grant general permission to reuse original TeamSync source code or other original project materials. Unauthorized copying, redistribution, modification, publication, or commercial exploitation is prohibited to the extent permitted by applicable law and subject to rights held by the relevant owners.
+
+Third-party software and assets remain under their respective owners' licenses; the TeamSync notice does not override those terms. Commercial licensing or partnership requires prior written authorization from the designated rights holder. Ownership/contact placeholders in the draft notices must be confirmed before formal commercial use. Copyright can protect qualifying expression, but this statement does not claim ownership over a general product idea or guarantee that copying can always be prevented.
+
+- [LICENSE](LICENSE) — draft proprietary software notice.
+- [COPYRIGHT.md](COPYRIGHT.md) — ownership scope, third-party boundaries, and contribution-chain notes.
+- [SECURITY.md](SECURITY.md) — draft vulnerability disclosure policy and GitHub security recommendations.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — approval, review, testing, and contributor-rights expectations.
+- [NOTICE.md](NOTICE.md) — proprietary notice and preliminary direct-dependency license inventory.
+
+These documents are initial drafts, not lawyer-reviewed agreements. Have them reviewed by a qualified intellectual property lawyer in India before relying on them for licensing or commercial operations.
