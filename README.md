@@ -160,7 +160,7 @@ The [documentation index](docs/README.md) links product requirements, architectu
 
 TeamSync is intended to be proprietary commercial software. This public repository does not grant general permission to reuse original TeamSync source code or other original project materials. Unauthorized copying, redistribution, modification, publication, or commercial exploitation is prohibited to the extent permitted by applicable law and subject to rights held by the relevant owners.
 
-Third-party software and assets remain under their respective owners' licenses; the TeamSync notice does not override those terms. Commercial licensing or partnership requires prior written authorization from the designated rights holder. Ownership/contact placeholders in the draft notices must be confirmed before formal commercial use. Copyright can protect qualifying expression, but this statement does not claim ownership over a general product idea or guarantee that copying can always be prevented.
+Third-party software and assets remain under their respective owners' licenses; the TeamSync notice does not override those terms. Commercial licensing or partnership requires prior written authorization from the designated rights holder. Confirm the ownership chain, contributor permissions, and asset rights before formal commercial use. Copyright can protect qualifying expression, but this statement does not claim ownership over a general product idea or guarantee that copying can always be prevented.
 
 - [LICENSE](LICENSE) — draft proprietary software notice.
 - [COPYRIGHT.md](COPYRIGHT.md) — ownership scope, third-party boundaries, and contribution-chain notes.

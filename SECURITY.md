@@ -1,10 +1,10 @@
 # TeamSync Security Policy
 
-**Document status:** Initial draft. The reporting address below is a placeholder and must be replaced with a monitored contact before this policy is relied upon. Review this policy with qualified counsel in India before formal commercial use.
+**Document status:** Initial draft. The reporting address was supplied by the project owner; mailbox monitoring has not been independently verified. Confirm that it is monitored before relying on this policy. Review this policy with qualified counsel in India before formal commercial use.
 
 ## Reporting a vulnerability
 
-Please report suspected security vulnerabilities privately to **[SECURITY CONTACT EMAIL]**. Do not post exploit details, credentials, personal information, or unpatched vulnerabilities in public issues, discussions, or pull requests.
+Please report suspected security vulnerabilities privately to **k.singh.codebase@gmail.com**. Do not post exploit details, credentials, personal information, or unpatched vulnerabilities in public issues, discussions, or pull requests.
 
 Include, when safe and available:
 
@@ -24,18 +24,18 @@ Please allow the maintainer a reasonable opportunity to investigate and coordina
 
 ## Acknowledgement and response process
 
-After a monitored address is established, the intended process is:
+Once the supplied address is confirmed as monitored, the intended process is:
 
 1. The maintainer reviews the report and acknowledges receipt as soon as reasonably practicable.
 2. The maintainer assesses scope, impact, and reproduction details, and may ask for additional information.
 3. The maintainer coordinates a fix or mitigation and a disclosure plan with the reporter where feasible.
 4. The maintainer communicates when the issue is resolved or when further action is not planned.
 
-These are process expectations, not guaranteed response times. Until the placeholder is replaced and monitored, there is no verified security-reporting channel.
+These are process expectations, not guaranteed response times. Although an address has been supplied, this workspace cannot verify that it is monitored; confirm monitoring before relying on it as a security-reporting channel.
 
 ## GitHub repository security recommendations
 
-GitHub repository metadata reported the repository as **public on 2026-11-14**. Recheck visibility in GitHub before relying on it; a proprietary notice does not hide source code. If source access is intended to be restricted, consider changing visibility through the authorized repository owner. No change was made as part of this documentation task.
+GitHub repository metadata reported the repository as **public on 2026-11-14**. The project owner's stated preference is to keep it public. Public visibility lets anyone access the source; a proprietary notice does not make the code confidential, prevent copying, or guarantee protection. Do not publish secrets or materials whose rights or disclosure have not been cleared. Revisit the visibility decision if confidentiality becomes a requirement. No GitHub setting was changed as part of this documentation task.
 
 The following controls are recommendations, not claims that they are enabled. Verify and configure them in GitHub repository and organization settings:
 

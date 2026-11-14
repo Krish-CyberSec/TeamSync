@@ -4,7 +4,7 @@
 
 ## TeamSync proprietary ownership notice
 
-Copyright (c) [CURRENT COPYRIGHT YEAR] [LEGAL COPYRIGHT OWNER]. All rights reserved in original TeamSync materials to the extent the designated owner holds or has validly acquired those rights. No general license to original TeamSync materials is granted by this notice. See [LICENSE](LICENSE) and [COPYRIGHT.md](COPYRIGHT.md).
+Copyright (c) 2026 Krish Kumar. All rights reserved in original TeamSync materials to the extent Krish Kumar holds or has validly acquired those rights. No general license to original TeamSync materials is granted by this notice. See [LICENSE](LICENSE) and [COPYRIGHT.md](COPYRIGHT.md).
 
 TeamSync's proprietary notice does not apply to third-party components and does not override their licenses or applicable law.
 
