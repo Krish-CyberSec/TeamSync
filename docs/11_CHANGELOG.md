@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-14 — Refresh sessions and auth integration tests documented
+- Updated: root/backend onboarding, architecture diagrams, active API reference, security/session lifecycle, environment guide, development guide and milestone tracker to match the current workspace source.
+- Documented: refresh-cookie attributes, SHA-256 token hashes, Session family IDs, transactional rotation, replay response, conditional updates, logout behavior and access-token revocation limitation.
+- Verified in source: Node `node:test` integration cases cover MongoDB commit/rollback and refresh rotation, invalid token, replay, concurrency, suspended user and expired session. These DB tests were not run during the documentation task.
+- Added: `docs/14_DEVELOPER_GUIDE.md`; no ADR was added because the implementation follows existing ADR-009.
+- Limitation: test suite uses a disposable replica-set MongoDB database; transaction test selects the database from `MONGO_URI`. Do not run it against production/shared data.
+
 ## 2026-11-14 — Backend auth, error and session primitives documented
 - Documented: the current workspace's login route/service/validation, mounted error handler, JWT helpers, and Session model, alongside the existing registration and health endpoints.
 - Clarified: login returns only a user DTO; token helpers and the Session schema are not integrated into login, refresh, logout, or revocation workflows.

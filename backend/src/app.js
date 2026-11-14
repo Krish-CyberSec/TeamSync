@@ -1,11 +1,15 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
 import healthRouter from "./modules/health/health.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import { errorHandler } from "./middleware/error.middleware.js";
+
+
 const app = express();
+
 
 // CORS middleware to allow requests from the client URL specified in the environment variables
 app.use(
@@ -19,6 +23,10 @@ app.use(helmet());
 
 // middleware to parse incoming JSON requests to JavaScript objects
 app.use(express.json());
+
+// Parse incoming cookies
+app.use(cookieParser());
+
 
 // Health check endpoint
 app.use("/api/v1/health", healthRouter);

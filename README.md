@@ -1,35 +1,95 @@
 # TeamSync
 
-TeamSync is a multi-workspace collaboration and personal productivity platform.
+**Work independently. Collaborate seamlessly. Stay in control.**
 
-**Product statement:** One account. Multiple workspaces. Personal productivity. Complete team collaboration.
+TeamSync is a collaboration and personal-productivity platform for individuals and teams. Its product vision combines personal work with multiple independent workspaces, workspace-specific roles, private projects, and secure team collaboration.
 
-## Architecture and technology
+## Contents
 
-The approved product architecture is a modular monolith: React/Vite/Tailwind CSS v4 frontend and Node.js/Express/Mongoose backend with MongoDB, Zod validation, and versioned REST under `/api/v1`. The frontend package declares React Router, TanStack Query, Zustand, Axios and Lucide React. The backend package declares Express, Mongoose, Zod, bcrypt, jsonwebtoken, dotenv, Helmet and CORS.
+- [Product and status](#product-and-status)
+- [Technology](#technology)
+- [Architecture](#architecture)
+- [Repository layout](#repository-layout)
+- [Local setup](#local-setup)
+- [Implemented API](#implemented-api)
+- [Documentation](#documentation)
 
-Package presence and approved architecture are not evidence that a feature is integrated. For example, JWT utilities exist but the login endpoint does not issue tokens; Socket.IO is planned but not integrated. Workspace roles and tenant rules remain approved requirements, not implemented backend authorization.
+## Product and status
 
-## Repository structure
+The target product includes personal tasks, workspaces, invitations and roles, private projects, Kanban tasks, comments, notifications, project chat and analytics. The current repository is an early backend foundation; the frontend is a Vite starter and most product domains are not implemented.
+
+Core product differentiators are one account for personal and team work, independent workspaces with workspace-specific roles, and projects that are private by default rather than automatically visible to every workspace member.
+
+| Feature | Description | Status |
+|---|---|---|
+| Backend bootstrap | Express ES modules, config validation, MongoDB connection lifecycle | IMPLEMENTED; live DB startup not verified here |
+| Health | Public `GET /api/v1/health` | COMPLETED; HTTP smoke check passed |
+| Registration | Strict validation, bcrypt-backed user persistence | IMPLEMENTED; owner reports manual Postman checks |
+| Login | Credential check, server-side refresh session, access token and HttpOnly cookie | IMPLEMENTED; DB-backed integration tests exist but were not run here |
+| Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; integration tests exist but were not run here |
+| Logout | Revoke matching refresh session and clear cookie | IMPLEMENTED; no dedicated logout test |
+| Current-user endpoint | Bearer authentication and active-account check | IMPLEMENTED; no dedicated middleware/route test |
+| Workspace/RBAC/projects/tasks | Multi-tenant collaboration domains | PLANNED |
+| Socket.IO | Authorized real-time delivery | PLANNED |
+| Frontend product UI | Router, auth UI, dashboards and API integration | PLANNED; current app is a starter |
+
+See the [roadmap and implementation tracker](docs/08_FEATURE_ROADMAP.md) for evidence, dependencies and acceptance criteria. Status does not imply production readiness.
+
+## Technology
+
+| Layer | Current technology |
+|---|---|
+| Backend runtime/API | Node.js ES modules, Express |
+| Persistence | MongoDB with Mongoose |
+| Validation | Zod |
+| Passwords | bcrypt |
+| Tokens | jsonwebtoken (HS256) |
+| HTTP security/config | Helmet, CORS, cookie-parser, dotenv |
+| Frontend scaffold | React, Vite, Tailwind CSS v4 |
+| Selected but not integrated frontend libraries | React Router, TanStack Query, Zustand, Axios, Lucide React |
+| Automated backend integration tests | Node.js `node:test`, `node:assert/strict`; MongoDB required |
+
+## Architecture
+
+TeamSync uses a modular monolith: the frontend calls a versioned REST API; Express routes dispatch into controllers and services; Mongoose models persist to MongoDB. Socket.IO remains planned.
+
+```mermaid
+flowchart LR
+  Browser["React/Vite starter"] -->|"REST /api/v1"| Express["Express application"]
+  Express --> Middleware["Helmet · CORS · JSON · cookies · errors"]
+  Middleware --> Routes["Health and auth routes"]
+  Routes --> Controllers["Controllers"]
+  Controllers --> Services["Auth services"]
+  Services --> Models["Mongoose User and Session models"]
+  Models --> MongoDB[("MongoDB")]
+  Services --> Tokens["JWT and SHA-256 helpers"]
+```
+
+For module responsibilities and request/database/auth flows, see [System Architecture](docs/05_SYSTEM_ARCHITECTURE.md).
+
+## Repository layout
 
 ```text
-backend/
-  src/config/       Environment schema
-  src/database/     Mongoose connection
-  src/middleware/   Express error handling
-  src/modules/      Auth, health and user model
-  src/utils/        JWT helpers
-  tests/            No automated backend tests yet
-frontend/
-  src/              Starter app plus scaffolded app/features/components/lib/styles
-docs/               Canonical product and engineering documentation
+backend/src/config/       dotenv and Zod configuration
+backend/src/database/     Mongoose connection
+backend/src/middleware/   auth and error middleware
+backend/src/modules/      auth, health, and user model
+backend/src/utils/        JWT and refresh-token hash helpers
+backend/tests/integration/ MongoDB transaction and auth rotation tests
+frontend/src/              starter app plus scaffolding
+docs/                      canonical product and engineering docs
 ```
 
 ## Local setup
 
-Use Node.js and npm; the repository does not yet declare a supported Node version.
+### Prerequisites
 
-Backend, from the `backend` directory:
+- Node.js and npm. `backend/package.json` does not declare a supported Node version.
+- A MongoDB deployment that supports transactions (replica set or sharded cluster) for refresh-rotation integration tests. MongoDB Atlas is one option; a live Atlas connection was not independently verified here.
+
+### Backend
+
+From `backend/`:
 
 ```powershell
 Copy-Item .env.example .env
@@ -37,31 +97,60 @@ npm ci
 npm run dev
 ```
 
-Before starting, set a reachable MongoDB URI and separate JWT secrets of at least 32 characters in the local `backend/.env`. The example file has blank placeholders only. `MONGO_URI` is optional in schema validation but required for successful database startup. Never commit `.env` or put server secrets in frontend variables.
+Set `MONGO_URI`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` in the local, ignored `.env`. The JWT secrets must each be at least 32 characters; use separate random values. `MONGO_URI` is optional in schema validation but required to connect and start the server.
 
-Frontend, from the `frontend` directory: run `npm ci`, then `npm run dev`. `npm run lint` and `npm run build` are the configured frontend quality commands. The frontend remains a starter screen and is not connected to the API.
+For Atlas, create a cluster, a database user with only the required application privileges, and a network access rule for the development environment; then copy the driver connection string into local `MONGO_URI`. Do not put credentials in the repository or paste the URI into logs/issues. Use a separate disposable replica-set database for tests.
 
-## Current backend API
+Available scripts are `npm run dev` and `npm start`. There is no `test` script. The DB-backed tests can be run with Node's test runner from `backend/`, after configuring a **dedicated disposable test database** in `MONGO_URI`:
 
-All current endpoints are public; login does not yet issue an access token or session cookie.
+```powershell
+node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js
+```
 
-| Method | Path | Purpose |
+The transaction test uses the database named by the URI; never point it at production or shared data. See [Testing Strategy](docs/09_TESTING_STRATEGY.md).
+
+### Frontend
+
+From `frontend/`:
+
+```powershell
+npm ci
+npm run dev
+npm run lint
+npm run build
+```
+
+These are the scripts declared in `frontend/package.json`. The frontend is not yet integrated with backend auth/API.
+
+### Environment variables
+
+| Variable | Requirement | Purpose/default |
 |---|---|---|
-| GET | `/api/v1/health` | Health check |
-| POST | `/api/v1/auth/register` | Register a user |
-| POST | `/api/v1/auth/login` | Validate credentials and return a user DTO |
+| `NODE_ENV` | Optional | `development`, `production`, or `test`; defaults to `development` |
+| `PORT` | Optional | Positive integer; defaults to `5000` |
+| `MONGO_URI` | Optional to schema; needed to start | MongoDB connection URI; no value is committed |
+| `JWT_ACCESS_SECRET` | Required | Minimum 32 characters |
+| `JWT_REFRESH_SECRET` | Required | Minimum 32 characters |
+| `CLIENT_URL` | Optional | Valid URL; defaults to `http://localhost:5173` |
+| `LOG_LEVEL` | Optional | `fatal`, `error`, `warn`, `info`, `debug`, or `trace`; defaults to `info` |
 
-See [API documentation](docs/07_API_DOCUMENTATION.md) for request schemas, responses, errors, and planned endpoints.
+`.env.example` files contain placeholders only. Never commit `.env` or expose server values through Vite variables. Full setup details are in the [Deployment Guide](docs/10_DEPLOYMENT_GUIDE.md).
 
-## Implementation progress
+## Implemented API
 
-The backend has environment validation, Express setup, Helmet/CORS, MongoDB connection/startup code, health and auth routes, User and Session models, centralized errors, and JWT sign/verify utilities. Registration/login flows and token/session primitives are at different implementation stages; only the token helpers and Session model are not connected to session workflows. Email verification, refresh rotation, logout/revocation, authentication middleware, workspace authorization, rate limiting, CSRF, Socket.IO and automated backend tests remain planned.
+All current paths are mounted beneath `/api/v1`.
 
-The owner-reported manual Postman results and status-by-feature table are in [Feature Roadmap](docs/08_FEATURE_ROADMAP.md). They are not automated coverage. The detailed implementation snapshot is [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+| Method and path | Authentication/cookie | Behavior |
+|---|---|---|
+| `GET /api/v1/health` | Public | Health response |
+| `POST /api/v1/auth/register` | Public | Creates a user; returns a safe DTO |
+| `POST /api/v1/auth/login` | Public | Checks credentials; returns access JWT and sets refresh cookie |
+| `POST /api/v1/auth/refresh` | Refresh cookie | Rotates a session and returns a new access JWT/cookie |
+| `POST /api/v1/auth/logout` | Refresh cookie optional | Attempts single-session revocation; clears cookie |
+| `GET /api/v1/auth/me` | Bearer access token | Returns current active user's profile DTO |
 
-## Documentation workflow
+See [API Documentation](docs/07_API_DOCUMENTATION.md) for exact requests, responses, statuses and limitations. JWT/session support does not yet include CSRF or Origin protection, rate limiting, logout-all-devices, or immediate access-token revocation.
 
-Read `AGENTS.md`, `PROJECT_CONTEXT.md` and relevant files in `docs/` before coding. `docs/` is canonical. Update affected docs, tests, project context and `docs/11_CHANGELOG.md` whenever behavior, architecture, schema, API or scope changes. Review [security and access](docs/13_SECURITY_AND_ACCESS.md) before treating the backend as production-ready. Never commit secrets; see `.env.example`.
+## Documentation
 
-## Current implementation status
-As of 2026-11-14, the backend has a partial foundation: Express startup, Zod environment parsing, MongoDB connection, health and registration endpoints, and a bcrypt-backed user model. Login, email verification, JWT/session lifecycle, authorization, centralized error handling, rate limiting, CSRF protection and automated backend tests are not implemented. The approved stack and R1 scope describe the target architecture, not completed functionality. See `PROJECT_CONTEXT.md` and `docs/` for the detailed status and contracts.
+The [documentation index](docs/README.md) links product requirements, architecture, schema, API contracts, security, testing, deployment, ADRs and roadmap. The [Developer Guide](docs/14_DEVELOPER_GUIDE.md) describes the current implementation patterns and contribution workflow.

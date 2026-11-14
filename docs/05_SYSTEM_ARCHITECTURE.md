@@ -1,61 +1,179 @@
 # System Architecture
 
-**Status:** R1 baseline frozen — 2026-11-13
+**Product architecture:** R1 baseline frozen 2026-11-13
+**Implementation snapshot:** 2026-11-14
+
+## Contents
+
+- [Style and stack](#style-and-stack)
+- [High-level architecture](#high-level-architecture)
+- [Frontend architecture](#frontend-architecture)
+- [Backend structure](#backend-structure)
+- [Request lifecycle](#request-lifecycle)
+- [Authentication lifecycle](#authentication-lifecycle)
+- [Database interaction](#database-interaction)
+- [Product boundaries](#product-boundaries)
 
 ## Style and stack
-Modular monolith. React + Vite + Tailwind CSS v4; React Router; TanStack Query; Zustand; Axios; Lucide React; Node.js + Express; MongoDB + Mongoose; Zod; Socket.IO; Jest + Supertest; OpenAPI/Swagger. Passwords use bcrypt. Do not introduce microservices without a new approved decision.
+
+TeamSync uses a modular monolith: one backend application with domain modules, a React/Vite frontend, and MongoDB as the durable source of truth. This keeps local development and deployment straightforward while still making domain responsibilities explicit; microservices are not justified at this stage.
+
+| Layer | Current implementation | Approved/selected but not integrated |
+|---|---|---|
+| Backend | Node.js ES modules, Express, Mongoose, Zod, bcrypt, jsonwebtoken, dotenv, Helmet, CORS, cookie-parser | Socket.IO |
+| Frontend | React, Vite, Tailwind CSS v4 starter | React Router, TanStack Query, Zustand, Axios, Lucide React are declared but not wired into app |
+| Testing | Node `node:test`, `node:assert/strict`, MongoDB integration-test files | Additional automated API/security tests |
+
+## High-level architecture
+
+```mermaid
+flowchart LR
+  Browser["React/Vite starter"] -->|"REST /api/v1"| App["Express application"]
+  App --> MW["CORS · Helmet · JSON · cookies"]
+  MW --> Routes["Health and auth routers"]
+  Routes --> Controllers["Controllers"]
+  Controllers --> Services["Auth services"]
+  Services --> Models["Mongoose User and Session"]
+  Services --> Tokens["JWT and SHA-256 helpers"]
+  Models --> DB[("MongoDB")]
+  App -. errors .-> Error["Central error handler"]
+```
 
 ## Frontend architecture
-The approved frontend organization is feature-oriented:
-- `app/` owns application bootstrap concerns, routing, providers and app-wide stores.
-- `features/` groups feature-specific components and behavior by domain, including auth, workspace, projects, tasks, notifications and chat.
-- `components/ui/` contains reusable primitives; `components/common/` contains shared cross-feature components; `components/layout/` contains shared page and navigation structure.
-- `pages/` composes route-level screens; `hooks/` holds genuinely shared hooks; `lib/` holds shared infrastructure such as the Axios and TanStack Query client instances; `styles/` holds shared styles; `assets/` holds static assets.
 
-Use React Router for routing, TanStack Query for remote server state, and Zustand for client-side global state. Keep short-lived component/view state local to React where practical. Do not duplicate server-owned records in a client store. Any access JWT remains memory-only under ADR-009; the exact store ownership for auth state is an implementation detail and must not change the approved token transport. Axios is the HTTP client, Lucide React is the icon set, and Tailwind CSS v4 is the styling utility layer. Design tokens and theme behavior follow the UI guidelines.
+The approved feature-oriented organization is:
 
-This is the approved architecture, not a claim that its runtime integrations exist. As verified on 2026-11-13, `frontend/src` has the directory scaffold and shared Axios/QueryClient instances, but `main.jsx` mounts only React StrictMode and `App`; there is no configured router, application provider, Zustand store, feature implementation or API request integration. The instances are not yet consumed by the application.
+- `frontend/src/app/`: future router, providers and app-level state.
+- `frontend/src/features/`: domain-specific auth, workspace, project, task, notification and chat behavior.
+- `frontend/src/components/ui/`, `common/`, `layout/`: reusable primitives and shared composition.
+- `frontend/src/pages/`: route-level screens.
+- `frontend/src/hooks/`, `lib/`, `styles/`, `assets/`: shared hooks, clients, styles and static assets.
 
-## Authentication/session architecture
-- Access JWT lifetime: 10–15 minutes.
-- Refresh session is server-tracked; persist a hash/opaque session identifier, never the raw refresh token.
-- Browser holds access token in memory. Refresh token is delivered in an `HttpOnly`, `Secure` cookie; apply CSRF protection to cookie-authenticated refresh/logout flows and configure strict trusted origins.
-- Rotate refresh token on every successful refresh. Detect reuse of a previously rotated token and revoke the affected session family, requiring re-authentication.
-- Revoke sessions on logout, password change and security response.
-- Validate JWT signature, expiry, issuer/audience where configured and token purpose.
+The actual app remains a starter screen. `main.jsx` renders `App` in `StrictMode`; there is no router/provider/store wiring, API call integration, auth UI, or Socket.IO client. Declared libraries and scaffold directories are not completed functionality.
 
-Current implementation is partial: `backend/src/utils/token.js` signs/verifies HS256 access JWTs (15 minutes) and refresh JWTs (seven days) with separate configured secrets, issuer, subject and token-type claims; the refresh token includes `sid`. `backend/src/modules/auth/session.model.js` defines persisted session metadata and indexes. These helpers/model are not called by login: login currently checks credentials and returns a user DTO, without a JWT or cookie. Session creation, refresh rotation/reuse detection, logout/revocation, CSRF, authentication middleware and workspace authorization remain unimplemented. This does not change ADR-009's approved transport/lifecycle design.
+## Backend structure
 
-## Backend request flow
-Browser → HTTPS → Express route → rate limiting/authentication/CSRF/request validation/authorization middleware → controller → service → Mongoose → MongoDB. Socket.IO authenticates against the same identity/session model and authorizes each room join and sensitive event. Persist state before emitting.
+```text
+backend/src/
+├── app.js                         Express middleware and route mounts
+├── server.js                      DB-first startup and signal shutdown
+├── config/env.js                  dotenv + Zod configuration
+├── database/connection.js         Mongoose connection
+├── middleware/
+│   ├── auth.middleware.js         Bearer access-token authentication
+│   └── error.middleware.js        API error mapping
+├── modules/
+│   ├── auth/                      routes, controller, schemas, service, Session model
+│   ├── health/                    health route/controller
+│   └── users/                     User model
+└── utils/
+    ├── token.js                   JWT sign/verify
+    └── token-hash.js              SHA-256 refresh-token digest
+```
 
-## Planned frontend communication flow (not yet implemented)
-Route-level screens and feature components will use TanStack Query for server reads and mutations, which will call the shared Axios client at the versioned `/api/v1` base. The current Axios instance uses `VITE_API_BASE_URL` when configured and otherwise defaults to `/api/v1`. The Express API remains responsible for input validation, authentication, authorization and tenant/resource isolation; client-side navigation or visibility is never an access-control boundary. The browser follows ADR-009: access JWT in memory, refresh token in an HttpOnly/Secure cookie with CSRF protection, rotation and reuse detection. Durable data remains in MongoDB; Socket.IO is delivery only and events follow persistence. The frontend currently has no API calls or Socket.IO client integration, and its intended route/provider composition is still open.
+Other product module directories currently contain placeholders.
 
-## Backend modules
-R1: auth, users, workspaces, members, projects, tasks, comments, notifications, activities, project chat, analytics. Calendar and file modules are staged for later releases; do not build R2 scope as part of R1 without approval.
+### Responsibilities and rationale
 
-The backend foundation is partially implemented (verified 2026-11-14). `backend/src/server.js` validates configuration, connects to MongoDB before listening, and handles SIGINT/SIGTERM by closing the HTTP server and then Mongoose. `backend/src/app.js` configures Helmet, credentialed CORS restricted to `CLIENT_URL`, JSON parsing, and the mounted error handler; it mounts public health and auth routes under `/api/v1`. Zod validates configuration and strict registration/login bodies. Registration and login controllers call services; the services use the Mongoose User model and bcrypt. The User model and Session model, plus JWT utilities, are implemented to the extent described in the database and API documents. Runtime dependencies and `dev`/`start` scripts are declared in `backend/package.json`.
+| Component | Responsibility | Why it is separate |
+|---|---|---|
+| Routes | Map HTTP method/path to controller; attach auth middleware where required | Keeps routing declarative |
+| Controllers | Parse request schemas, call services, set cookies/statuses, return safe DTOs | Isolates transport-specific behavior |
+| Services | Registration/login and refresh-session decisions | Keeps business rules out of routes and persistence hooks |
+| Models | Define MongoDB fields, indexes and password hooks | Centralizes persistence constraints |
+| Middleware | Authenticate Bearer access requests; map forwarded errors | Reuses cross-cutting behavior across routes |
+| Config | Load dotenv and validate env once with Zod | Fails early instead of silently running with invalid config |
+| Database | Connect with Mongoose | Centralizes connection lifecycle |
+| Utilities | Sign/verify JWTs and hash refresh token strings | Reuses narrow, side-effect-limited primitives |
 
-The three active routes are `GET /api/v1/health`, `POST /api/v1/auth/register`, and `POST /api/v1/auth/login`. Login does not issue tokens; JWT/session utilities are not integrated. Email verification, refresh rotation/reuse detection, logout/revocation, CSRF, rate limiting, authentication middleware, workspace/resource authorization, and automated backend tests remain unimplemented. Live MongoDB connection/startup has not been verified. Other R1 domain modules remain planned.
+## Request lifecycle
 
-## Layer rules
-Routes define endpoints; middleware handles cross-cutting concerns; controllers translate HTTP; services implement business rules; models/data access persist; socket handlers authorize and deliver events.
+Actual Express order from `backend/src/app.js`:
 
-## Tenant and project access model
-User↔Workspace is many-to-many through WorkspaceMember. ProjectMember grants ordinary member access to a private project. Workspace OWNER/ADMIN can administer all projects in their workspace. MANAGER must have explicit manager authority on a project. Every task/comment/chat/notification/activity query is scoped through the relevant project/workspace and action permission. Personal tasks are owner-scoped.
+1. CORS with configured `CLIENT_URL` and credentials.
+2. Helmet security headers.
+3. JSON body parsing.
+4. `cookie-parser`.
+5. `/api/v1/health` and `/api/v1/auth` routers.
+6. Central error handler for errors forwarded with `next(error)`.
 
-## Invitations
-Generate cryptographically random single-use invitation tokens; store only token hashes. Invitations are bound to an email and expire after seven days. Resend/revoke are administrative operations. Acceptance verifies identity, token hash, pending status and expiry; membership creation is atomic and idempotent.
+The auth router applies `authenticate` to `GET /me`. Login and registration are public; refresh and logout use the refresh cookie.
 
-## Transactions and durable events
-Workspace + OWNER membership creation and invitation acceptance + membership creation are atomic on a replica-set-capable MongoDB deployment. Persist task/chat changes before creating downstream notifications/activity and emitting Socket.IO events. Use transaction or outbox where consistency requirements warrant it.
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant E as Express middleware
+  participant R as Router
+  participant V as Controller/Zod
+  participant S as Auth service
+  participant M as Mongoose
+  participant D as MongoDB
+  C->>E: HTTP request
+  E->>E: CORS, Helmet, JSON, cookies
+  E->>R: Dispatch versioned route
+  R->>V: Optional Bearer auth, then controller
+  V->>V: Parse strict request schema
+  V->>S: Validated input
+  S->>M: User or Session operation
+  M->>D: Query or transaction
+  D-->>M: Result
+  M-->>S: Documents
+  S-->>V: Domain result
+  V-->>C: DTO, status, optional cookie
+  V-->>E: next(error) on failure
+  E-->>C: Mapped JSON error
+```
 
-## Lifecycle, retention and operations
-Account deletion: soft-delete and 30-day recovery window, then permanently delete/anonymize eligible data. Workspace deletion: OWNER-only, confirmation-gated, soft-delete-first and controlled dependent-data workflow. Proposed product activity retention: 180 days; security audit retention: 365 days, restricted access. Daily backups retained 30 days; restoration tests required. Validate legal obligations before production.
+### Configuration and startup
 
-## Deployment baseline
-Frontend Vercel/CDN; API Render/Railway; MongoDB Atlas. Email provider remains TBD. Keep secrets in environment/secret management; CI runs tests/build before deployment.
+`backend/src/config/env.js` imports `dotenv/config`, parses `process.env` using Zod, reports field errors and exits on invalid required configuration. `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required (minimum 32 characters each); `MONGO_URI` is schema-optional but required for successful connection. `server.js` awaits `connectDB()` before opening the HTTP listener. On SIGINT/SIGTERM it stops the HTTP server and then closes Mongoose. There is no explicit shutdown timeout.
 
-## Deferred decisions
-Email provider and production hosting selection; exact permission catalogue and project-specific manager capabilities; outbox/background worker infrastructure; file scanning/private delivery provider; legal review of retention and deletion policies; MFA recovery design.
+## Authentication lifecycle
+
+```mermaid
+flowchart TD
+  Register["POST /auth/register"] --> RegValidate["Strict Zod schema"]
+  RegValidate --> RegService["Check email; create User"]
+  RegService --> Hash["Mongoose pre-save: bcrypt cost 12"]
+  Hash --> SafeReg["Return safe user DTO"]
+  Login["POST /auth/login"] --> LoginValidate["Strict Zod schema"]
+  LoginValidate --> Credentials["Select passwordHash; status check; bcrypt compare"]
+  Credentials --> Session["Create Session; persist SHA-256(refresh JWT)"]
+  Session --> Tokens["Return access JWT; set HttpOnly refresh cookie"]
+  Refresh["POST /auth/refresh"] --> Verify["Verify JWT, IDs, session hash, expiry and status"]
+  Verify --> Transaction["Transaction: revoke old; create replacement"]
+  Transaction --> Replay{"Matching revoked token replay?"}
+  Replay -->|"yes"| Family["Revoke active family sessions"]
+  Replay -->|"no"| NewTokens["Return access JWT and replacement cookie"]
+  Me["GET /auth/me"] --> Bearer["Verify Bearer token; load active User"]
+  Logout["POST /auth/logout"] --> Revoke["Revoke matching current refresh session"]
+  Revoke --> Clear["Clear refresh cookie"]
+```
+
+The system currently implements this auth/session foundation, but it does not implement email verification, CSRF/Origin protection, rate limiting, logout-all-devices, or workspace authorization. See the [API reference](07_API_DOCUMENTATION.md) and [security model](13_SECURITY_AND_ACCESS.md) for precise behavior.
+
+## Database interaction
+
+```mermaid
+sequenceDiagram
+  participant API as Auth service
+  participant TX as Mongoose transaction
+  participant S as Session collection
+  participant U as User collection
+  API->>TX: Start refresh rotation
+  TX->>S: Find sid + user; select hidden tokenHash
+  TX->>TX: Compare SHA-256 and check expiry/revocation
+  TX->>U: Confirm account is active
+  TX->>S: Conditional update old session (revokedAt, lastUsedAt, replacedBy)
+  TX->>S: Insert replacement with same familyId
+  TX-->>API: Commit atomically
+  Note over TX,S: Failure aborts transaction writes
+```
+
+MongoDB transactions require a replica set or sharded deployment. A dedicated test database is required for integration tests. The transaction test uses the database named in `MONGO_URI`, so a production/shared URI must never be used for tests.
+
+Conditional session update claims a refresh session once. If a previously revoked token with a matching stored hash is reused, the service revokes all active sessions sharing its `familyId`; the family identifier itself is not changed. The concurrency test expects one rotation to succeed, the competing request to fail, and the token family to end revoked. These integration tests exist but were not run during this documentation update.
+
+## Product boundaries
+
+The approved R1 modules include auth, users, workspaces, membership, invitations, projects, tasks, comments, notifications, activities, project chat and analytics. Only auth, health and user/session persistence are currently represented by working backend code. Calendar, attachments and direct/group messaging are deferred to later releases. Workspace and project access rules remain requirements, not implemented authorization.

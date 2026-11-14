@@ -15,5 +15,6 @@
 | 11_CHANGELOG.md | Meaningful changes |
 | 12_DECISION_LOG.md | Accepted/proposed decisions |
 | 13_SECURITY_AND_ACCESS.md | Threat model, authentication, authorization and controls |
+| 14_DEVELOPER_GUIDE.md | Backend onboarding and implementation patterns |
 
 Mark unapproved ideas PROPOSED and unknowns TBD. Keep one canonical version; update existing documents rather than creating competing copies.

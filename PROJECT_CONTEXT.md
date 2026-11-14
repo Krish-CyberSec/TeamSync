@@ -1,94 +1,66 @@
 # TeamSync Project Context
 
-> Update at the end of every meaningful milestone. This is the concise, current snapshot; `docs/` remains canonical.
+> Concise implementation snapshot; `docs/` is the canonical product and engineering reference.
 
-## Product
-TeamSync is a web collaboration and personal productivity platform for individuals, student teams, development teams, startups, freelancers and small organizations. It combines My Day/private personal tasks with multi-workspace collaboration, private projects, Kanban tasks, comments, project chat, notifications, activity and analytics.
+## Product and approved architecture
 
-## Confirmed technology and architecture
-| Area | Decision |
-|---|---|
-| Architecture | Modular monolith |
-| Frontend | React + Vite + Tailwind CSS v4 |
-| Frontend routing | React Router |
-| Server state | TanStack Query |
-| Client global state | Zustand |
-| HTTP client | Axios |
-| Icons | Lucide React |
-| Backend | Node.js + Express.js |
-| Database | MongoDB + Mongoose |
-| Password hashing | bcrypt |
-| Auth | 10–15 minute access JWT + server-tracked rotating refresh session |
-| Browser token transport | Access token in memory; refresh cookie HttpOnly/Secure with CSRF protection |
-| Validation | Zod |
-| Real-time | Socket.IO; persist before emit |
-| API | `/api/v1` |
-| Roles | OWNER, ADMIN, MANAGER, MEMBER |
-| Membership | Separate WorkspaceMember; unique `{ workspace: 1, user: 1 }` |
-| Project access | Private by default; ProjectMember for ordinary member access |
-| Themes | Dark and light |
+TeamSync combines personal productivity with collaboration across multiple workspaces. Target R1 includes private projects, role-specific workspace membership, tasks, comments, project chat, notifications, activity and analytics.
 
-Frontend library roles are recorded in ADR-014. These are architecture/tooling decisions; package presence and scaffold files do not mean runtime integration or product features are implemented.
+Architecture is a modular monolith: React/Vite/Tailwind CSS v4 frontend; Node.js ES-module/Express backend; MongoDB/Mongoose; Zod validation; bcrypt passwords; JWT access/refresh tokens. The approved token transport is a 10–15 minute access JWT held in memory plus an HttpOnly/Secure refresh cookie with CSRF protection and server-side rotation. Current code uses 15-minute access and seven-day refresh tokens. Workspaces, role authorization and product features remain approved requirements, not implemented functionality.
 
-The approved 10–15 minute access-JWT and rotating refresh-session design remains the target. Current code has 15-minute/seven-day token helpers and a Session model, but login does not issue or verify a session token and no refresh/logout lifecycle is connected.
+Frontend libraries React Router, TanStack Query, Zustand, Axios and Lucide React are declared/selected but not integrated. Socket.IO remains planned.
 
-## Approved product/security decisions
-- A user may have different roles in different workspaces.
-- JWT proves identity, not resource authorization.
-- Workspace OWNER/ADMIN can administer all projects in their workspace; MANAGER requires explicit project authority; ordinary members require ProjectMember.
+## Current backend structure
+
+```text
+backend/src/
+  app.js                         Express middleware and /api/v1 route mounts
+  server.js                      MongoDB-first startup and signal shutdown
+  config/env.js                  dotenv + Zod environment validation
+  database/connection.js         Mongoose connection
+  middleware/auth.middleware.js  Bearer access-token authentication
+  middleware/error.middleware.js centralized JSON error mapping
+  modules/auth/                  routes, controller, schemas, services, Session
+  modules/health/                health route/controller
+  modules/users/                  User model
+  utils/token.js                 HS256 JWT helpers
+  utils/token-hash.js            SHA-256 refresh-token digest
+backend/tests/integration/       transaction and refresh rotation tests
+frontend/src/                    React/Vite starter and scaffold
+docs/                            canonical product and engineering docs
+```
+
+## Implemented and checked
+
+- Express uses CORS, Helmet, JSON parsing and cookie-parser, mounts health/auth routers under `/api/v1`, then the error handler.
+- Zod validates configuration and strict registration/login inputs. Required JWT secrets are at least 32 characters each; code does not enforce that values differ. `MONGO_URI` is schema-optional but runtime-needed.
+- Registration hashes passwords with bcrypt cost 12 and returns a safe DTO. Login checks status/password, creates a Session, returns an access JWT, and sets a refresh cookie.
+- Session stores user, family ID, SHA-256 token hash, expiry/revocation/replacement/last-use metadata and timestamps. Rotation checks token/session/user status and conditionally replaces sessions inside a MongoDB transaction; matching replay revokes active sessions in the family.
+- Logout attempts to revoke the matching current refresh session and clears the refresh cookie. `GET /auth/me` verifies Bearer access JWT and reloads the active user.
+- Active API: `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
+- `node --check` passed for 16 backend source files and two integration-test files. Current smoke check: health 200; invalid registration/login 400; refresh without cookie 401; logout without cookie 200; `/me` without Bearer 401. No DB-backed auth operation was exercised by that smoke check.
+
+## Test evidence and limitations
+
+Two MongoDB `node:test` integration files exist. The transaction suite checks commit/rollback. The auth suite checks valid rotation, invalid JWT, replay, concurrency, suspended user and expired DB session. The tests were not run during this documentation task because they perform database writes and require a disposable replica-set DB. No `test` script exists. The transaction suite uses the DB selected by `MONGO_URI`; never target production/shared data.
+
+The project owner reports manual Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, bcrypt hash verification, login 200 and invalid credentials 401. These are owner-reported manual checks, not automated coverage and were not repeated here.
+
+MongoDB startup/index creation has not been independently verified. The frontend remains a starter. Auth limitations: no CSRF/Origin controls, auth rate limits, email verification, logout-all-devices, immediate access-token revocation or workspace/resource authorization. The error handler logs full 5xx Error objects; production log redaction needs review. This is not production-ready.
+
+## Important decisions
+
+- Workspace membership belongs in a separate WorkspaceMember collection; unique `{ workspace: 1, user: 1 }`.
+- Workspace roles: OWNER, ADMIN, MANAGER, MEMBER. JWT identity is not authorization.
+- Projects are private by default; ordinary members need active ProjectMember access.
 - Personal tasks are owner-only and non-shareable in R1.
-- Invitations are email-bound, single-use, hashed at rest and expire after seven days; resend/revoke supported.
-- R1 includes task comments and project-scoped chat; direct/group messaging is R2.
-- R1 excludes private task/chat attachments.
-- Account deletion: soft-delete + 30-day recovery, then delete/anonymize eligible data.
-- Workspace deletion: OWNER-only, confirmation-gated, soft-delete-first.
-- Product activity retention 180 days; security audit retention 365 days; daily backups retained 30 days with restore tests. Validate legal obligations before production.
-
-## Release plan
-- R1: auth/profile/sessions, workspaces/membership/invitations/RBAC, private projects/ProjectMember, tasks/Kanban/comments/checklists, My Day/private personal tasks, project chat, basic notifications/activity/analytics, responsive dark/light UI.
-- R2: calendar, recurring tasks, advanced reminders, direct/group messaging, knowledge base, search, command palette, attachments, time tracking and templates.
-- R3: integrations, MFA, advanced reporting, custom roles, automation, AI insights and optional billing.
-
-## Current status
-**R1 planning baseline approved and frozen. Implementation status inspected 2026-11-14:**
-
-### Current source layout
-- `backend/src/config/`: dotenv loading and Zod environment schema.
-- `backend/src/database/`: Mongoose connection.
-- `backend/src/middleware/`: centralized Express error handler.
-- `backend/src/modules/auth/`: routes, controller, Zod schemas, registration/login services and Session model.
-- `backend/src/modules/health/`: health route/controller.
-- `backend/src/modules/users/`: User model.
-- `backend/src/utils/`: JWT signing/verification helpers.
-- `frontend/src/`: app starter plus scaffolded app, feature, component, hook, lib, page and style folders.
-- `docs/`: canonical requirements, architecture, API, security, roadmap and implementation notes.
-
-### Implemented and verified
-- Backend uses Node.js ES modules, Express, Mongoose, Zod, Helmet, CORS, bcrypt and `jsonwebtoken`; dependency and script declarations are in `backend/package.json`.
-- Environment validation requires `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to each contain at least 32 characters; code does not enforce that their values differ. `MONGO_URI` is schema-optional but required for successful database startup.
-- Express mounts public `GET /api/v1/health`, `POST /api/v1/auth/register` and `POST /api/v1/auth/login`; error middleware handles Zod/Mongoose validation and Mongo duplicate-key errors.
-- Registration/login use strict Zod schemas and service/controller separation. The User model hashes passwords with bcrypt cost 12 and excludes hashes from ordinary queries.
-- JWT helpers sign and verify HS256 access (15-minute) and refresh (7-day) tokens with separate secrets, issuer, subject and type claims; refresh tokens also carry `sid`.
-- Session model defines a user reference, hidden unique token hash, expiry, revocation/replacement/last-use fields, timestamps and TTL index.
-- Current-task verification: 14 backend JavaScript files passed `node --check`; an in-process smoke check returned health 200, registration/login validation 400, and generated/verified access and refresh claims. This did not connect to MongoDB.
-
-### User-reported manual checks
-The project owner reports successful Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, password hashing in MongoDB, login 200, and invalid credentials 401. These results are manually reported, not automated tests and were not independently repeated during this documentation update.
-
-### Remaining implementation and limitations
-- JWT helpers and Session model are not integrated into login. No access token or refresh cookie is returned by login.
-- Session creation, refresh rotation/reuse detection, logout/revocation, authentication middleware and workspace/resource authorization are not implemented.
-- Email verification, rate limiting, CSRF protection and automated backend tests are not implemented. `backend/package.json` has no test script and `backend/tests/` contains only a placeholder.
-- Live MongoDB connection and server startup were not verified. The frontend remains a starter screen without router/provider wiring, feature behavior or API integration; Socket.IO is not integrated.
-- Login returns 403 for non-active accounts, which may disclose account status. The error handler logs the full Error object for 5xx failures; production logs need a redaction review. Do not treat this backend as production-ready.
-
-The local `backend/.env` is ignored by Git and was not read during this review. Use `backend/.env.example` only as a blank placeholder reference; never commit secrets.
-
-## Remaining implementation choices
-Email provider/hosting; exact permission catalogue and manager permission granularity; outbox/background worker need; avatar storage provider; legal review of retention/deletion; detailed data disposition on workspace deletion.
+- R1 chat is project-scoped; direct/group messaging and private task/chat attachments are deferred.
+- Existing ADRs are in `docs/12_DECISION_LOG.md`; no new architectural decision was made in this milestone.
 
 ## Next milestone
-Add automated backend tests for config, models, registration/login and error responses; verify startup against a disposable MongoDB test database; review safe logging and account-state enumeration. Then implement the approved email-verification and token/session lifecycle with refresh rotation, logout/revocation and authentication middleware, without changing ADR-009 transport decisions. Add server-side authorization before protected workspace/project APIs. After those contracts stabilize, connect frontend router/providers and implement a tested vertical slice.
+
+Run the existing transaction/auth integration tests against an isolated replica-set database and add HTTP endpoint/cookie/logout/auth-middleware tests. Complete CSRF/Origin controls, auth rate limiting, logout-all-devices and access-token revocation design. Then implement server-side workspace authorization before protected workspace/project APIs and connect the frontend to stable API contracts.
 
 ## Last updated
-2026-11-14 — Backend registration/login, error handling, token/session primitives and current implementation gaps documented.
+
+2026-11-14 — Auth/session routes, transaction tests, onboarding and documentation status synchronized to current workspace source.

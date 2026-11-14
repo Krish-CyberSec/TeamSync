@@ -8,6 +8,11 @@ const sessionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    familyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
 
     tokenHash: {
       type: String,
