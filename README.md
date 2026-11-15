@@ -4,6 +4,8 @@
 
 TeamSync is a collaboration and personal-productivity platform for individuals and teams. Its product vision combines personal work with multiple independent workspaces, workspace-specific roles, private projects, and secure team collaboration.
 
+[![Architecture diagram](https://gitdiagram.com/diagram-badge.svg)](https://gitdiagram.com/krish-cybersec/teamsync?utm_source=readme&utm_medium=badge)
+
 ## Contents
 
 - [Product and status](#product-and-status)
