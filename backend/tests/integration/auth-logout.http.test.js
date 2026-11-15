@@ -237,3 +237,32 @@ test("HTTP logout rejects a request with a missing Origin", async () => {
     assert.equal(body.success, false);
     assert.equal(body.message, "Request origin is not allowed");
 });
+
+
+test("expired database session cannot access protected routes", async () => {
+    const user = await createTestUser();
+    const { session } = await createUserSession(user._id);
+
+    const accessToken = generateAccessToken(
+        user._id,
+        session._id
+    );
+
+    // Confirm access before session expiry.
+    const beforeExpiry = await getMe(accessToken);
+    assert.equal(beforeExpiry.status, 200);
+
+    // Expire the database session manually.
+    await Session.updateOne(
+        { _id: session._id },
+        { $set: { expiresAt: new Date(Date.now() - 1000) } }
+    );
+
+    const afterExpiry = await getMe(accessToken);
+    const body = await afterExpiry.json();
+
+    assert.equal(afterExpiry.status, 401);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Session is invalid or revoked");
+});
+
