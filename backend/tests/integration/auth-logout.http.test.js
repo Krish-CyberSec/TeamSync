@@ -144,3 +144,31 @@ test("HTTP logout succeeds with an invalid refresh cookie", async () => {
 
     assertCookieCleared(response);
 });
+
+
+test("HTTP logout rejects a request with a malicious Origin", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+    method: "POST",
+    headers: {
+      Origin: "https://malicious.example",
+    },
+  });
+
+  const body = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(body.success, false);
+  assert.equal(body.message, "Request origin is not allowed");
+});
+
+test("HTTP logout rejects a request with a missing Origin", async () => {
+  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+    method: "POST",
+  });
+
+  const body = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(body.success, false);
+  assert.equal(body.message, "Request origin is not allowed");
+});
