@@ -18,124 +18,129 @@ let baseUrl;
 const testUserIds = [];
 
 before(async () => {
-  await mongoose.connect(env.MONGO_URI, {
-    dbName: "teamsync_test",
-  });
+    await mongoose.connect(env.MONGO_URI, {
+        dbName: "teamsync_test",
+    });
 
-  server = app.listen(0);
+    server = app.listen(0);
 
-  await new Promise((resolve, reject) => {
-    server.once("listening", resolve);
-    server.once("error", reject);
-  });
+    await new Promise((resolve, reject) => {
+        server.once("listening", resolve);
+        server.once("error", reject);
+    });
 
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
 });
 
 after(async () => {
-  if (server?.listening) {
-    await new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    });
-  }
+    if (server?.listening) {
+        await new Promise((resolve, reject) => {
+            server.close((error) => {
+                if (error) reject(error);
+                else resolve();
+            });
+        });
+    }
 
-  if (testUserIds.length > 0) {
-    await Session.deleteMany({
-      user: { $in: testUserIds },
-    });
+    if (testUserIds.length > 0) {
+        await Session.deleteMany({
+            user: { $in: testUserIds },
+        });
 
-    await User.deleteMany({
-      _id: { $in: testUserIds },
-    });
-  }
+        await User.deleteMany({
+            _id: { $in: testUserIds },
+        });
+    }
 
-  if (mongoose.connection.readyState !== 0) {
-    await mongoose.disconnect();
-  }
+    if (mongoose.connection.readyState !== 0) {
+        await mongoose.disconnect();
+    }
 });
 
 const createTestUser = async () => {
-  const user = await User.create({
-    name: "TeamSync HTTP Logout Test",
-    email: `teamsync-http-logout-${randomUUID()}@example.com`,
-    passwordHash: "temporary-test-password",
-  });
+    const user = await User.create({
+        name: "TeamSync HTTP Logout Test",
+        email: `teamsync-http-logout-${randomUUID()}@example.com`,
+        passwordHash: "temporary-test-password",
+    });
 
-  testUserIds.push(user._id);
-  return user;
+    testUserIds.push(user._id);
+    return user;
 };
 
 const assertCookieCleared = (response) => {
-  const cookies = response.headers.getSetCookie();
+    const cookies = response.headers.getSetCookie();
 
-  const refreshCookie = cookies.find((cookie) =>
-    cookie.startsWith("refreshToken=")
-  );
+    const refreshCookie = cookies.find((cookie) =>
+        cookie.startsWith("refreshToken=")
+    );
 
-  assert.ok(refreshCookie, "Refresh cookie should be present");
+    assert.ok(refreshCookie, "Refresh cookie should be present");
 
-  assert.match(refreshCookie, /HttpOnly/i);
-  assert.match(refreshCookie, /Path=\/api\/v1\/auth/i);
-  assert.match(refreshCookie, /SameSite=Lax/i);
-  assert.match(refreshCookie, /Expires=Thu, 01 Jan 1970/i);
+    assert.match(refreshCookie, /HttpOnly/i);
+    assert.match(refreshCookie, /Path=\/api\/v1\/auth/i);
+    assert.match(refreshCookie, /SameSite=Lax/i);
+    assert.match(refreshCookie, /Expires=Thu, 01 Jan 1970/i);
 };
 
 test("HTTP logout revokes session and clears refresh cookie", async () => {
-  const user = await createTestUser();
-  const original = await createUserSession(user._id);
+    const user = await createTestUser();
+    const original = await createUserSession(user._id);
 
-  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-    headers: {
-      Cookie: `refreshToken=${original.refreshToken}`,
-    },
-  });
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: `refreshToken=${original.refreshToken}`,
+        },
+    });
 
-  const body = await response.json();
+    const body = await response.json();
 
-  const storedSession = await Session.findById(
-    original.session._id
-  );
+    const storedSession = await Session.findById(
+        original.session._id
+    );
 
-  assert.equal(response.status, 200);
-  assert.equal(body.success, true);
-  assert.equal(body.message, "Logout successful");
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.message, "Logout successful");
 
-  assert.ok(storedSession.revokedAt);
+    assert.ok(storedSession.revokedAt);
 
-  assertCookieCleared(response);
+    assertCookieCleared(response);
 });
 
 test("HTTP logout succeeds when refresh cookie is missing", async () => {
-  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-  });
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+        },
+    });
 
-  const body = await response.json();
+    const body = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.equal(body.success, true);
-  assert.equal(body.message, "Logout successful");
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.message, "Logout successful");
 
-  assertCookieCleared(response);
+    assertCookieCleared(response);
 });
 
 test("HTTP logout succeeds with an invalid refresh cookie", async () => {
-  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-    headers: {
-      Cookie: "refreshToken=invalid-refresh-token",
-    },
-  });
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: "refreshToken=invalid-refresh-token",
+        },
+    });
 
-  const body = await response.json();
+    const body = await response.json();
 
-  assert.equal(response.status, 200);
-  assert.equal(body.success, true);
-  assert.equal(body.message, "Logout successful");
+    assert.equal(response.status, 200);
+    assert.equal(body.success, true);
+    assert.equal(body.message, "Logout successful");
 
-  assertCookieCleared(response);
+    assertCookieCleared(response);
 });

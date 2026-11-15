@@ -1,3 +1,6 @@
+
+import { Router } from "express";
+
 import {
   register,
   login,
@@ -5,26 +8,17 @@ import {
   refresh,
   logout,
 } from "./auth.controller.js";
-import { Router } from "express";
+
 import { authenticate } from "../../middleware/auth.middleware.js";
+import { requireTrustedOrigin } from "../../middleware/origin.middleware.js";
 
 const router = Router();
 
-// POST /register
-router.post("/register", register);
+router.post("/register", requireTrustedOrigin, register);
+router.post("/login", requireTrustedOrigin, login);
+router.post("/refresh", requireTrustedOrigin, refresh);
+router.post("/logout", requireTrustedOrigin, logout);
 
-// POST /login
-router.post("/login", login);
-
-// POST /logout - Invalidate the current refresh token and log out the user
-router.post("/logout", logout);
-
-// POST /refresh - Rotate refresh token and issue new access token
-router.post("/refresh", refresh);
-
-// GET /me - Get authenticated user's profile
 router.get("/me", authenticate, getCurrentUser);
-
-
 
 export default router;
