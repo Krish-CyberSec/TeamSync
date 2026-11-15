@@ -6,7 +6,7 @@ import { env } from "./config/env.js";
 import healthRouter from "./modules/health/health.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import { errorHandler } from "./middleware/error.middleware.js";
-
+import { apiLimiter } from "./middleware/rate-limit.middleware.js";
 
 const app = express();
 
@@ -27,6 +27,8 @@ app.use(express.json());
 // Parse incoming cookies
 app.use(cookieParser());
 
+// Apply general rate limiting to all API endpoints
+app.use("/api/v1", apiLimiter);
 
 // Health check endpoint
 app.use("/api/v1/health", healthRouter);
