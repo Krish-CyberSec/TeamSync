@@ -1,14 +1,16 @@
+
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 
 const JWT_ISSUER = "teamsync";
 const JWT_ALGORITHM = "HS256";
 
-// Generate short-lived access token
-export const generateAccessToken = (userId) => {
+// Generate a short-lived access token bound to a session
+export const generateAccessToken = (userId, sessionId) => {
   return jwt.sign(
     {
       tokenType: "access",
+      sid: String(sessionId),
     },
     env.JWT_ACCESS_SECRET,
     {
@@ -47,7 +49,8 @@ export const verifyAccessToken = (token) => {
   if (
     typeof payload === "string" ||
     payload.tokenType !== "access" ||
-    typeof payload.sub !== "string"
+    typeof payload.sub !== "string" ||
+    typeof payload.sid !== "string"
   ) {
     throw new Error("Invalid access token");
   }
