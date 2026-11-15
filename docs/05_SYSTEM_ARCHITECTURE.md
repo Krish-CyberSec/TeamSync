@@ -22,17 +22,17 @@ TeamSync uses a modular monolith: one backend application with domain modules, a
 |---|---|---|
 | Backend | Node.js ES modules, Express, MongoDB/Mongoose, Zod, bcrypt, jsonwebtoken, dotenv, Helmet, CORS, cookie-parser, express-rate-limit | Socket.IO |
 | Frontend | React/Vite/Tailwind CSS v4 starter; Axios and TanStack Query client instances are scaffolded | React Router, Zustand and Lucide React are declared but unused; no router/provider/store, product UI or API/auth integration |
-| Testing | Node `node:test`, `node:assert/strict`, six integration files covering transaction, auth HTTP/service and rate limits | Workspace tests, successful refresh-controller HTTP tests and broader security/failure paths |
+| Testing | Node `node:test`, `node:assert/strict`, nine integration files covering transaction, auth HTTP/service, CSRF and rate limits | Workspace tests, strict CSRF-cookie clearing-path coverage and broader security/failure paths |
 
 ## High-level architecture
 
 ```mermaid
 flowchart LR
   Browser["React/Vite starter"] -->|"REST /api/v1"| App["Express application"]
-  App --> MW["CORS · Helmet · JSON · cookies"]
+  App --> MW["CORS · Helmet · JSON · cookies · API limiter"]
   MW --> Routes["Health and auth routers"]
   Routes --> Controllers["Controllers"]
-  Routes -. "auth routes only" .-> Guard["Origin checks · IP rate limits"]
+  Routes -. "auth routes only" .-> Guard["Origin · CSRF · route-specific rate limits"]
   Guard --> Controllers
   Controllers --> Services["Auth services"]
   Services --> Models["Mongoose User, Session, Workspace and WorkspaceMember"]
@@ -66,13 +66,15 @@ backend/src/
 │   ├── auth.middleware.js         Bearer access-token authentication
 │   ├── error.middleware.js        API error mapping
 │   ├── origin.middleware.js       Exact trusted-Origin check for auth POST routes
-│   └── rate-limit.middleware.js   In-memory login/register/refresh limiters
+│   ├── csrf.middleware.js         Signed double-submit check for refresh/logout
+│   └── rate-limit.middleware.js   In-memory API and auth-route limiters
 ├── modules/
 │   ├── auth/                      routes, controller, schemas, service, Session model
 │   ├── health/                    health route/controller
 │   ├── users/                     User model
 │   └── workspaces/                Workspace/member models, validation, create service and controller; no routes
 └── utils/
+    ├── csrf-token.js              HMAC-SHA256 token generation/verification
     ├── token.js                   JWT sign/verify
     └── token-hash.js              SHA-256 refresh-token digest
 ```
@@ -83,7 +85,7 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 
 | Module | Status | Evidence / limits |
 |---|---|---|
-| Auth | Implemented but not fully tested | Register/login/refresh/logout and `/me` exist; six test files contain relevant assertions, but were not run for this documentation update. |
+| Auth | Implemented but not fully tested | Register/login/refresh/logout and `/me` exist; nine test files contain relevant assertions; the full DB-backed suite was not run for this documentation update. |
 | Health | Implemented | Public health route/controller exist; a prior smoke check returned HTTP 200, but it was not rerun here. |
 | Users | Implemented but not fully tested | User model, bcrypt hook and auth flows exist; test assertions cover registration/hash/DTO behavior, but pass status is unverified. |
 | Workspaces | Partially implemented | Models, create validation, transaction service and controller exist; no routes, integration tests, membership authorization or tenant isolation. |
@@ -92,7 +94,7 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 | Notifications | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Chat | Planned / not started | Placeholder directory only; no model, service, routes or Socket.IO integration. |
 | Database | Implemented but not fully tested | Mongoose connection and User/Session/Workspace/WorkspaceMember schemas exist; live database/index creation and workspace transaction tests were not verified. |
-| Middleware | Implemented but not fully tested | Auth, errors, Origin checks and rate limits exist; HTTP assertions cover some paths, but tests were not run and auth failure paths remain incomplete. |
+| Middleware | Implemented but not fully tested | Auth, errors, Origin/CSRF checks, general API rate limiting and auth-route limits exist; tests cover selected paths, but full-suite execution and broader failure paths remain unverified. |
 | Frontend | Partially implemented | React/Vite/Tailwind starter plus Axios/Query client instances; no router/provider wiring, product UI, auth flow or API integration. |
 
 ### Responsibilities and rationale
@@ -105,7 +107,7 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 | Models | Define User, Session, Workspace and WorkspaceMember fields/index declarations | Centralizes persistence constraints |
 | Middleware | Authenticate Bearer access requests; map forwarded errors | Reuses cross-cutting behavior across routes |
 | Origin middleware | Require the configured frontend Origin on auth POST routes | Rejects missing or untrusted browser origins; it is a CSRF defense, not identity verification |
-| Rate-limit middleware | Apply IP-based limits to login, registration and refresh | Bounds repeated requests; the configured default store is process-local |
+| Rate-limit middleware | Apply 300 requests/15 minutes to `/api/v1`, plus route limits for login, registration and refresh | Bounds repeated requests; default stores are process-local |
 | Config | Load dotenv and validate env once with Zod | Fails early instead of silently running with invalid config |
 | Database | Connect with Mongoose | Centralizes connection lifecycle |
 | Utilities | Sign/verify JWTs and hash refresh token strings | Reuses narrow, side-effect-limited primitives |
@@ -118,10 +120,10 @@ Actual Express order from `backend/src/app.js`:
 2. Helmet security headers.
 3. JSON body parsing.
 4. `cookie-parser`.
-5. `/api/v1/health` and `/api/v1/auth` routers; auth route middleware applies rate limiting and/or trusted-Origin checks before controllers.
+5. General IP rate limiter on `/api/v1`, then health/auth routers; auth routes apply route-specific rate limiting, trusted-Origin and CSRF checks before controllers.
 6. Central error handler for errors forwarded with `next(error)`.
 
-The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout use the refresh cookie. Login, registration and refresh also have IP-based rate limits. `authenticate` verifies both the JWT and its database session. Workspace controller/service code is not mounted: there is no workspace routes file or active workspace API.
+The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout additionally require a refresh cookie and valid CSRF cookie/header pair. A general 300-per-15-minute IP limit applies to every `/api/v1` request; login, registration and refresh have stricter route limits. `authenticate` verifies both the JWT and its database session. Workspace controller/service code is not mounted: there is no workspace routes file or active workspace API.
 
 ```mermaid
 sequenceDiagram
@@ -133,9 +135,9 @@ sequenceDiagram
   participant M as Mongoose
   participant D as MongoDB
   C->>E: HTTP request
-  E->>E: CORS, Helmet, JSON, cookies
+  E->>E: CORS, Helmet, JSON, cookies, general API limiter
   E->>R: Dispatch versioned route
-  R->>R: Route-specific limiter and/or Origin check
+  R->>R: Route limiter, Origin check and CSRF check as configured
   R->>V: Optional Bearer auth, then controller
   V->>V: Parse strict request schema
   V->>S: Validated input
@@ -164,18 +166,18 @@ flowchart TD
   Login["POST /auth/login"] --> LoginValidate["Strict Zod schema"]
   LoginValidate --> Credentials["Select passwordHash; status check; bcrypt compare"]
   Credentials --> Session["Create Session; persist SHA-256(refresh JWT)"]
-  Session --> Tokens["Return access JWT bound to Session sid; set refresh cookie"]
+  Session --> Tokens["Return access JWT; set refresh and signed CSRF cookies"]
   Refresh["POST /auth/refresh"] --> Verify["Verify JWT, IDs, session hash, expiry and status"]
   Verify --> Transaction["Transaction: revoke old; create replacement"]
   Transaction --> Replay{"Matching revoked token replay?"}
   Replay -->|"yes"| Family["Revoke active family sessions"]
-  Replay -->|"no"| NewTokens["Return access JWT and replacement cookie"]
+  Replay -->|"no"| NewTokens["Return access JWT and replacement refresh/CSRF cookies"]
   Me["GET /auth/me"] --> Bearer["Verify Bearer JWT; load active User and exact active Session"]
-  Logout["POST /auth/logout"] --> Revoke["Revoke matching current refresh session"]
-  Revoke --> Clear["Clear refresh cookie"]
+  Logout["POST /auth/logout<br/>requires CSRF header/cookie"] --> Revoke["Revoke matching current refresh session"]
+  Revoke --> Clear["Clear refresh and CSRF cookies"]
 ```
 
-The system currently implements this auth/session foundation, Origin validation on the four auth POST routes and in-memory IP rate limits for login, registration and refresh. Access-token session checks make session revocation effective immediately on protected requests. It does not implement email verification, a CSRF token mechanism, shared rate-limit storage, logout-all-devices or workspace authorization. See the [API reference](07_API_DOCUMENTATION.md) and [security model](13_SECURITY_AND_ACCESS.md) for precise behavior and limitations.
+The system currently implements this auth/session foundation, Origin validation on the four auth POST routes, signed double-submit CSRF validation on refresh/logout, and in-memory IP rate limits for all API routes plus stricter login/registration/refresh limits. Access-token session checks make session revocation effective immediately on protected requests. It does not implement shared rate-limit storage, explicit production proxy trust, email verification, logout-all-devices or workspace authorization. The logout controller currently clears the CSRF cookie with a path different from the one used when issuing it; see the [security model](13_SECURITY_AND_ACCESS.md). See the [API reference](07_API_DOCUMENTATION.md) for precise behavior and limitations.
 
 Every access JWT contains `sid`, the `_id` of the database Session created at login or refresh. On protected requests, authentication verifies the JWT (`exp`, issuer, algorithm and token type), loads an active User, then requires the exact matching Session for that user with `revokedAt: null` and `expiresAt` in the future. JWT expiry (15 minutes) and database-session expiry (seven days) are independent limits: either one can deny access first. A valid JWT signature does not override a revoked, missing or expired database Session. Logout revokes only the supplied session, so its access tokens fail the next protected request while another device's session remains active.
 

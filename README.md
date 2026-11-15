@@ -30,8 +30,8 @@ Core product differentiators are one account for personal and team work, indepen
 | Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; integration tests exist but were not run here |
 | Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; service and HTTP tests exist but were not run here |
 | Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; exercised by logout HTTP integration tests (not run here) |
-| Auth Origin protection | Exact `CLIENT_URL` Origin required for register/login/refresh/logout | IMPLEMENTED; this is a CSRF defense, not authentication; no CSRF token mechanism |
-| Auth rate limits | Login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
+| CSRF and Origin defenses | Exact `CLIENT_URL` Origin required on auth POST routes; signed double-submit token on refresh/logout | IMPLEMENTED; HMAC-SHA256 token is bound to the refresh token |
+| API/auth rate limits | API 300/15m; login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
 | Workspace creation slice | Workspace/member models, validation, transactional service and controller | PARTIAL; no route, integration test, or workspace authorization |
 | Workspace RBAC, projects, tasks | Multi-tenant collaboration domains | PLANNED |
 | Socket.IO | Authorized real-time delivery | PLANNED |
@@ -102,7 +102,7 @@ npm ci
 npm run dev
 ```
 
-Set `MONGO_URI`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` in the local, ignored `.env`. The JWT secrets must each be at least 32 characters; use separate random values. `MONGO_URI` is optional in schema validation but required to connect and start the server.
+Set `MONGO_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `CSRF_SECRET` in the local, ignored `.env`. Each secret must be at least 32 characters; use separate random values. `MONGO_URI` is optional in schema validation but required to connect and start the server.
 
 For Atlas, create a cluster, a database user with only the required application privileges, and a network access rule for the development environment; then copy the driver connection string into local `MONGO_URI`. Do not put credentials in the repository or paste the URI into logs/issues. Use a separate disposable replica-set database for tests.
 
@@ -136,6 +136,7 @@ These are the scripts declared in `frontend/package.json`. The frontend is not y
 | `MONGO_URI` | Optional to schema; needed to start | MongoDB connection URI; no value is committed |
 | `JWT_ACCESS_SECRET` | Required | Minimum 32 characters |
 | `JWT_REFRESH_SECRET` | Required | Minimum 32 characters |
+| `CSRF_SECRET` | Required | Minimum 32 characters; HMAC-SHA256 CSRF-token signing key |
 | `CLIENT_URL` | Optional | Valid URL; defaults to `http://localhost:5173` |
 | `LOG_LEVEL` | Optional | `fatal`, `error`, `warn`, `info`, `debug`, or `trace`; defaults to `info` |
 
@@ -149,12 +150,12 @@ All current paths are mounted beneath `/api/v1`.
 |---|---|---|
 | `GET /api/v1/health` | Public | Health response |
 | `POST /api/v1/auth/register` | Public | Creates a user; returns a safe DTO |
-| `POST /api/v1/auth/login` | Public | Checks credentials; returns access JWT and sets refresh cookie |
-| `POST /api/v1/auth/refresh` | Refresh cookie | Rotates a session and returns a new access JWT/cookie |
-| `POST /api/v1/auth/logout` | Refresh cookie optional | Attempts single-session revocation; clears cookie |
+| `POST /api/v1/auth/login` | Public | Checks credentials; returns access JWT and sets refresh/CSRF cookies |
+| `POST /api/v1/auth/refresh` | Refresh cookie, `csrfToken` cookie and matching `X-CSRF-Token` header | Rotates a session and issues replacement refresh/CSRF cookies |
+| `POST /api/v1/auth/logout` | Refresh cookie, `csrfToken` cookie and matching `X-CSRF-Token` header | Attempts single-session revocation; clears cookies |
 | `GET /api/v1/auth/me` | Bearer access token | Returns current active user's profile DTO |
 
-Register/login/refresh/logout also require `Origin` matching `new URL(CLIENT_URL).origin`. Login, registration and refresh use in-memory IP-based rate limits; health, logout and `/auth/me` do not. Access JWTs are bound to a database session, which is checked on protected requests; revoking a session (including logout) invalidates its access tokens immediately, while independent device sessions remain active. The app does not configure production proxy trust or shared rate-limit storage. Workspace model/service/controller code exists, but no workspace route or authorization is active. See [API Documentation](docs/07_API_DOCUMENTATION.md) for current endpoint contracts. A CSRF token mechanism, logout-all-devices, and workspace/resource authorization are not implemented.
+All four auth POST routes require `Origin` matching `new URL(CLIENT_URL).origin`; refresh and logout additionally require a valid double-submit CSRF token. A general in-memory IP limiter applies to `/api/v1` (300 requests per 15 minutes), with stricter login, registration and refresh limits. Health, logout and `/auth/me` have no route-specific limiter, though the global API limiter still applies. Access JWTs are bound to a database session, which is checked on protected requests; revoking a session (including logout) invalidates its access tokens immediately, while independent device sessions remain active. The app does not configure production proxy trust or shared rate-limit storage. Workspace model/service/controller code exists, but no workspace route or authorization is active. See [API Documentation](docs/07_API_DOCUMENTATION.md) for current endpoint contracts. Logout-all-devices and workspace/resource authorization are not implemented.
 
 ## Documentation
 

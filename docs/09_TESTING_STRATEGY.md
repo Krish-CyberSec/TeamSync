@@ -5,9 +5,9 @@
 
 ## Test setup
 
-The backend uses Node.js built-in `node:test` and `node:assert/strict`. Six integration files exist under `backend/tests/integration/`. `backend/package.json` does not define a `test` script or a separate test runner.
+The backend uses Node.js built-in `node:test` and `node:assert/strict`. Nine test files exist under `backend/tests/integration/`. `backend/package.json` does not define a `test` script or a separate test runner.
 
-The MongoDB-backed tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` values (at least 32 characters each), and an isolated disposable MongoDB replica set or sharded deployment. The test files import the environment validator, so even the rate-limit-only HTTP suite needs valid JWT secrets. Do not expose local secret values.
+The tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` and `CSRF_SECRET` values (at least 32 characters each), and an isolated disposable MongoDB replica set or sharded deployment for database-backed files. The test files import the environment validator, so even CSRF and rate-limit-only tests need these secret variables. Do not expose local secret values.
 
 ## Existing integration tests
 
@@ -17,10 +17,13 @@ The MongoDB-backed tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET` and 
 | `tests/integration/auth-rotation.test.js` | Valid replacement session and hash; invalid JWT rejection; replay revokes the family; concurrent refresh attempts yield one success and one rejection then revoke the family; suspended account rejection and family revocation; expired database session rejection. |
 | `tests/integration/auth-register-login.test.js` | Registration success, safe DTO and bcrypt hash; duplicate email; invalid registration; unexpected registration field; successful login, access-token claims and refresh-cookie attributes; wrong password; unknown email; suspended user; invalid login input. Uses `teamsync_test` and sets `trust proxy` to `loopback` for test IPs. |
 | `tests/integration/auth-logout.test.js` | Matching session revocation; invalid token cannot revoke a session; repeated logout does not modify the revoked session; logout only affects the selected device session; expired JWT cannot revoke a session. |
-| `tests/integration/auth-logout.http.test.js` | HTTP logout revokes a valid session and clears its cookie; its bound access token then fails `/me`; logging out one device leaves the other active; missing/invalid cookie still succeeds and clears; malicious/missing Origin are rejected with 403; expired database session is rejected by `/me`. Uses `teamsync_test`. |
-| `tests/integration/rate-limit.test.js` | HTTP 429 on the sixth login request, sixth registration request and thirty-first refresh request; checks each response message. It does not assert rate-limit headers. |
+| `tests/integration/auth-logout.http.test.js` | HTTP logout revokes a valid session and clears cookies; its bound access token then fails `/me`; logging out one device leaves the other active; Origin and CSRF failures return 403; expired database session is rejected by `/me`. Uses `teamsync_test`. |
+| `tests/integration/auth-refresh.http.test.js` | Missing, mismatched and invalid CSRF token rejection; a valid token permits refresh and rotates both cookies, binding the new CSRF token to the replacement refresh token. Uses `teamsync_test`. |
+| `tests/integration/csrf-token.test.js` | Unit checks valid refresh-token binding, different refresh-token rejection, tampered/malformed/missing tokens and expiry after seven days. |
+| `tests/integration/rate-limit.test.js` | HTTP 429 on login request 6, registration request 6 and refresh request 31; checks each response message. It does not assert rate-limit headers. |
+| `tests/integration/api-rate-limit.test.js` | HTTP 404 responses reach the app through request 300; request 301 receives the general API limiter's 429 response and message. It does not assert rate-limit headers. |
 
-These are source-verified assertions, not a claim that the tests passed in this documentation update. The repository does not include execution output for this current set, and the DB-backed tests were not run during this documentation sync. No workspace model/service/controller tests, successful refresh-controller HTTP test, or explicit database-failure test for logout exists.
+These test descriptions reflect assertions in source. The non-database files `csrf-token.test.js`, `api-rate-limit.test.js` and `rate-limit.test.js` were run during this documentation update: 10 tests passed. The full suite, including MongoDB-backed tests, was not run, so a full-suite pass is unverified. No workspace model/service/controller tests, strict CSRF-cookie clearing-path assertion, or explicit database-failure test for logout exists.
 
 ## Running tests safely
 
@@ -34,10 +37,13 @@ node --test tests/integration/auth-rotation.test.js
 node --test tests/integration/auth-register-login.test.js
 node --test tests/integration/auth-logout.test.js
 node --test tests/integration/auth-logout.http.test.js
+node --test tests/integration/auth-refresh.http.test.js
+node --test tests/integration/csrf-token.test.js
 node --test tests/integration/rate-limit.test.js
+node --test tests/integration/api-rate-limit.test.js
 ```
 
-Run all six files:
+Run all nine files:
 
 ```powershell
 node --test tests/integration/*.test.js
@@ -48,9 +54,10 @@ MongoDB transactions require a replica set or sharded deployment; a standalone s
 ## Coverage gaps
 
 - Malformed Bearer headers, invalid JWT, missing/inactive user, and database failure on `/auth/me`; active, revoked, expired and one-device-isolation cases are covered in `auth-logout.http.test.js`.
-- Successful refresh route/cookie behavior and Origin rejection on register, login and refresh (logout Origin failures are covered).
+- Origin rejection on register, login and refresh (logout Origin failures are covered).
 - Logout database failure and full cookie attribute verification for production `Secure` behavior.
 - Rate-limit header assertions, reset behavior, multiple backend instances and reverse-proxy IP configuration.
+- Exact CSRF cookie clearing path (`Path=/`) on logout; current issuance/clearing paths differ.
 - Config invalid-input cases as automated tests.
 - Registration duplicate-key race and live unique-index provisioning.
 - JWT expiry, wrong issuer/type/algorithm/signature and mismatched claims beyond tested cases.

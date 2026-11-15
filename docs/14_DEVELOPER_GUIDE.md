@@ -27,7 +27,7 @@ backend/src/
   modules/users/                 User model
   modules/workspaces/            Workspace/member models, validation, transactional creation service and controller; no route
   utils/                         JWT signing/verifying and SHA-256 token hash
-backend/tests/integration/       six transaction, auth service/HTTP and rate-limit test files
+backend/tests/integration/       nine transaction, auth service/HTTP, CSRF and rate-limit test files
 frontend/src/                    React/Vite starter and scaffolding
 docs/                            Product, architecture, API, security and operations docs
 ```
@@ -104,13 +104,13 @@ The handler logs full 5xx Error objects to console today; production logging red
 
 Use `node:test` and `node:assert/strict`. Place integration tests under `backend/tests/integration/`, isolate generated records, and clean up in `after` hooks. Transaction tests need a replica set or sharded cluster. Ensure each test database is disposable; the current transaction test uses `MONGO_URI`'s selected DB, while auth/logout suites select `teamsync_test`.
 
-Six integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP (including bound access-token invalidation, device isolation and expired database sessions), and rate-limit HTTP behavior. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
+Nine integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP, refresh HTTP with CSRF rotation, CSRF token unit cases, and general/route-specific rate limits. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
 
 ```powershell
 node --test tests/integration/*.test.js
 ```
 
-No npm test script exists. The test files were not run during the latest documentation sync; source assertions exist but current test pass status is unverified. Workspace files have no tests, and successful refresh-controller HTTP and broader Bearer failure cases remain uncovered.
+No npm test script exists. The CSRF-unit, general API rate-limit and auth-route rate-limit files passed (10 tests total) during this documentation update; the full DB-backed suite was not run, so full-suite pass status is unverified. Workspace files have no tests, and broader Bearer failure cases remain uncovered.
 
 ## Security conventions
 
@@ -118,8 +118,9 @@ No npm test script exists. The test files were not run during the latest documen
 - Verify JWT algorithm, issuer, expiry and token purpose; validate identifiers before querying. Access JWTs carry the Session ID (`sid`), and protected requests require the matching user/session record to be active and unexpired.
 - Keep access JWT in memory; refresh token in HttpOnly cookie. The current cookie is `SameSite=Lax`, uses path `/api/v1/auth`, and sets `Secure` only in production.
 - Session revocation invalidates access tokens bound to that session on the next protected request; do not describe them as valid until JWT expiry. Session and JWT expiration are independent checks.
-- Registration/login/refresh/logout require the Origin derived from `CLIENT_URL`; missing/mismatched values receive 403. This is a CSRF defense, not authentication, and no CSRF token is implemented. CORS alone is not CSRF protection.
-- Login is limited to 5/IP/15 minutes, registration to 5/IP/hour and refresh to 30/IP/15 minutes. The default limiter store is in-memory and not shared across instances; the app has no production `trust proxy` setting.
+- Registration/login/refresh/logout require the Origin derived from `CLIENT_URL`; refresh/logout also require a CSRF cookie/header pair verified against the refresh cookie. CSRF HMAC signing uses a dedicated `CSRF_SECRET` of at least 32 characters. CORS alone is not CSRF protection.
+- The general API limiter is 300/IP/15 minutes; login is 5/IP/15 minutes, registration 5/IP/hour and refresh 30/IP/15 minutes. Standard `RateLimit-*` headers are enabled, and default in-memory stores are not shared across instances; the app has no production `trust proxy` setting.
+- The CSRF cookie is issued at `Path=/` but logout clears it at `/api/v1/auth`; this path mismatch may prevent browser-side removal and needs a source fix plus an exact-path regression test.
 - Enforce account/session state and, for product resources, workspace/project authorization on the server.
 - Do not treat the current workspace creation controller/service as workspace authorization; no workspace API route or RBAC check is implemented.
 - Use allowlisted DTOs/updates, bounded list operations and tests for negative access paths.

@@ -38,7 +38,7 @@ Status refers to the current workspace source. MongoDB-backed tests were not run
 | Feature | Status | Evidence / limitation |
 |---|---|---|
 | Express project foundation | COMPLETED | ES-module app/server, middleware and routes exist; syntax checked. |
-| Environment validation | COMPLETED | dotenv + Zod; required JWT secrets need at least 32 characters. |
+| Environment validation | COMPLETED | dotenv + Zod; required JWT and CSRF secrets need at least 32 characters. |
 | MongoDB connection | IMPLEMENTED | Mongoose connect is awaited before listen; live connection not independently verified. |
 | Health endpoint | COMPLETED | `GET /api/v1/health` returned HTTP 200 in smoke check. |
 | User model / bcrypt | IMPLEMENTED | Schema, hash hook (cost 12), password comparison method and safe query default exist; owner reports hash verified in MongoDB. |
@@ -50,13 +50,15 @@ Status refers to the current workspace source. MongoDB-backed tests were not run
 | Refresh rotation/replay | IMPLEMENTED | Transaction, conditional update and family revocation implemented; integration tests exist but were not run here. |
 | Single-device logout | IMPLEMENTED | Revokes matching session and clears cookie; bound access JWTs fail on the next protected request, while other device sessions remain active. Service/HTTP assertions exist but were not run for this documentation sync. |
 | `/auth/me` authentication | IMPLEMENTED | Checks Bearer JWT, active user and exact active/unexpired Session. HTTP assertions cover valid, revoked, expired and independent device sessions; not run here. |
-| Trusted-Origin validation | IMPLEMENTED | Exact `CLIENT_URL` origin required on register/login/refresh/logout; missing/mismatched Origin returns 403. No CSRF token mechanism. |
-| Authentication rate limits | IMPLEMENTED | Login 5/15m, registration 5/hour and refresh 30/15m per IP; default in-memory store, no shared backend or production proxy trust config. |
+| Trusted-Origin validation | IMPLEMENTED | Exact `CLIENT_URL` origin required on register/login/refresh/logout; missing/mismatched Origin returns 403. |
+| CSRF protection | IMPLEMENTED | HMAC-SHA256 signed double-submit cookie/header required on refresh/logout; tokens are bound to refresh token and expire after seven days. Logout CSRF-cookie clearing path mismatch remains. |
+| API/auth rate limits | IMPLEMENTED | 300/15m on `/api/v1`; login 5/15m, registration 5/hour, refresh 30/15m per IP. Default in-memory stores; no shared backend or production proxy trust config. |
 | Transaction integration tests | IMPLEMENTED | Commit and rollback cases exist; not run in this task. |
 | Refresh integration tests | IMPLEMENTED | Rotation, invalid JWT, replay, concurrency, suspended user and expired DB session cases exist; not run in this task. |
 | Registration/login HTTP tests | IMPLEMENTED | Success, validation, duplicate email, unexpected fields, credentials, suspension, safe DTO and refresh-cookie checks exist; not run in this task. |
 | Logout tests | IMPLEMENTED | Service coverage includes valid/invalid/repeated/device-specific/expired-token cases; HTTP coverage includes valid/missing/invalid cookies and trusted-Origin rejection; not run in this task. |
-| Rate-limit HTTP tests | IMPLEMENTED | Tests verify the login/registration sixth-request and refresh thirty-first-request 429 thresholds; not run in this task. |
+| CSRF unit/HTTP tests | IMPLEMENTED | Unit assertions cover binding, tampering, malformed/missing/expired tokens; refresh/logout HTTP tests cover missing, mismatched and invalid tokens and refresh rotation. |
+| Rate-limit HTTP tests | IMPLEMENTED | Tests cover API request 301 and login/registration request 6 and refresh request 31 returning 429; response-header assertions remain absent. |
 | Workspace data models | IMPLEMENTED | Workspace and WorkspaceMember schemas exist; unique slug and compound membership indexes are declared, not verified in the database. |
 | Workspace create validation/controller/service | PARTIAL | Strict create schema and controller exist; service creates workspace plus creator OWNER membership in one transaction. No route, test, or authorization middleware. |
 | Email verification / password reset | PLANNED | No routes, persistence flow or mail integration. |
@@ -66,7 +68,7 @@ Status refers to the current workspace source. MongoDB-backed tests were not run
 | Project chat / Socket.IO | PLANNED | No Socket.IO integration. |
 | Frontend product/auth integration | PLANNED | React starter only; no API/auth wiring. |
 | Workspace creation tests | PLANNED | No unit or integration tests for its transaction/controller. |
-| Automated HTTP auth tests | IN PROGRESS | Register/login, logout, session-bound `/me` and limiter assertions exist; successful refresh-controller and broader failure-path coverage remain. |
+| Automated HTTP auth tests | IN PROGRESS | Register/login, refresh with CSRF rotation, logout, session-bound `/me` and limiter assertions exist; broader failure-path coverage remains. |
 
 The project owner reports manual Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, password hashing, login 200 and invalid credentials 401. These are owner-reported manual results, not automated coverage and were not repeated during this documentation task.
 
@@ -75,8 +77,8 @@ The project owner reports manual Postman/MongoDB checks for registration 201, du
 | Milestone | Status | Dependencies | Acceptance criteria | Remaining work |
 |---|---|---|---|---|
 | Backend foundation | IMPLEMENTED | Node/npm, valid config, MongoDB | Config rejects invalid required values; DB gates listen; health returns 200; signals close server/DB | Verify live DB startup and operational shutdown |
-| Auth/session foundation | IN PROGRESS | MongoDB replica set for transactions | Register/login/refresh/logout/me behavior; session-bound access revocation; only refresh token hash persisted | Run integration tests; add successful refresh-controller HTTP coverage and remaining failure cases |
-| Authentication hardening | IN PROGRESS | Auth/session foundation | Origin validation and configured rate limits have negative-path HTTP coverage; complete shared rate-limit/proxy deployment review, cookie/header/log review, logout-all-devices and broader revocation semantics | Run existing integration tests; review trusted proxy configuration and shared storage; add remaining endpoint/security tests |
+| Auth/session foundation | IN PROGRESS | MongoDB replica set for transactions | Register/login/refresh/logout/me behavior; session-bound access revocation; only refresh token hash persisted | Run integration tests against disposable DB; expand remaining failure cases |
+| Authentication hardening | IN PROGRESS | Auth/session foundation | Origin and CSRF checks plus general/route-specific rate limits are implemented; complete shared rate-limit/proxy deployment review, cookie/header/log review, logout-all-devices and broader revocation semantics | Run full integration suite against isolated replica-set DB; fix CSRF cookie clearing path; review trusted proxy configuration and shared storage; add remaining endpoint/security tests |
 | Core product | IN PROGRESS | Authentication and authorization | Workspace/invite/role/project/task/comment/notification flows with tenant-isolation tests | Finish workspace routes/RBAC/tests, then implement the remaining vertical slices |
 | Collaboration | PLANNED | Project authorization and persistence | Project chat persists before delivery; unauthorized room/event access rejected | Add Socket.IO and real-time notifications |
 | Frontend integration | PLANNED | Stable API contracts and auth transport | Auth, workspace, project, task and notification UI works against API | Router/providers, API client, state and E2E tests |

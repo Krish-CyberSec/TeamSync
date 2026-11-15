@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-15 — CSRF and API rate-limit documentation synchronized
+- Updated: root/backend onboarding, API reference, architecture, security, testing, deployment, roadmap and project context to match the implemented signed double-submit CSRF mechanism and general API rate limiter.
+- Documented: required `CSRF_SECRET` (minimum 32 characters), token HMAC-SHA256 binding/expiry/validation, `csrfToken` cookie and `X-CSRF-Token` header, refresh/logout enforcement, and standard rate-limit headers.
+- Added: the missing non-secret `CSRF_SECRET` placeholder to the root `.env.example`; backend `.env.example` already contained a placeholder.
+- Flagged: the CSRF cookie is issued at `Path=/` but logout clears it at `/api/v1/auth`; this source-level mismatch remains unfixed.
+- Nine test files now exist, including CSRF unit/HTTP and general API rate-limit coverage. Three non-database test files passed (10 tests); the complete DB-backed suite was not run, so no full-suite pass is claimed.
+
 ## 2026-11-15 — Session-bound access and workspace slice documented
 - Updated: project context, root/backend/frontend onboarding, architecture, database schema, API, security, testing, roadmap and developer guidance to reflect the newer source state.
 - Corrected: access JWTs now carry `sid`; protected requests validate the matching active, unexpired database Session, so logout invalidates that device's access tokens while independent device sessions remain active.
