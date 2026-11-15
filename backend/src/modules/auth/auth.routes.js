@@ -12,12 +12,40 @@ import {
 import { authenticate } from "../../middleware/auth.middleware.js";
 import { requireTrustedOrigin } from "../../middleware/origin.middleware.js";
 
+import {
+  loginLimiter,
+  registerLimiter,
+  refreshLimiter,
+} from "../../middleware/rate-limit.middleware.js";
+
 const router = Router();
 
-router.post("/register", requireTrustedOrigin, register);
-router.post("/login", requireTrustedOrigin, login);
-router.post("/refresh", requireTrustedOrigin, refresh);
-router.post("/logout", requireTrustedOrigin, logout);
+router.post(
+  "/register",
+  registerLimiter,
+  requireTrustedOrigin,
+  register
+);
+
+router.post(
+  "/login",
+  loginLimiter,
+  requireTrustedOrigin,
+  login
+);
+
+router.post(
+  "/refresh",
+  refreshLimiter,
+  requireTrustedOrigin,
+  refresh
+);
+
+router.post(
+  "/logout",
+  requireTrustedOrigin,
+  logout
+);
 
 router.get("/me", authenticate, getCurrentUser);
 
