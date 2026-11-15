@@ -14,6 +14,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32), // for JWT access token secret validation
   JWT_REFRESH_SECRET: z.string().min(32), // for JWT refresh token secret validation
 
+  CSRF_SECRET: z.string().min(32), // Dedicated secret for signing CSRF tokens
+
   CLIENT_URL: z.string().url().default("http://localhost:5173"), // for client URL validation
 
   LOG_LEVEL: z

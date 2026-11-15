@@ -1,4 +1,4 @@
-
+import { generateCsrfToken } from "../../src/utils/csrf-token.js";
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -78,11 +78,14 @@ const getMe = async (accessToken) => {
 };
 
 const logout = async (refreshToken) => {
+    const csrfToken = generateCsrfToken(refreshToken);
+
     return fetch(`${baseUrl}/api/v1/auth/logout`, {
         method: "POST",
         headers: {
             Origin: env.CLIENT_URL,
-            Cookie: `refreshToken=${refreshToken}`,
+            Cookie: `refreshToken=${refreshToken}; csrfToken=${csrfToken}`,
+            "X-CSRF-Token": csrfToken,
         },
     });
 };
@@ -94,11 +97,20 @@ const assertCookieCleared = (response) => {
         cookie.startsWith("refreshToken=")
     );
 
-    assert.ok(refreshCookie, "Refresh cookie should be present");
+    const csrfCookie = cookies.find((cookie) =>
+        cookie.startsWith("csrfToken=")
+    );
+
+    assert.ok(refreshCookie, "Refresh cookie should be cleared");
+    assert.ok(csrfCookie, "CSRF cookie should be cleared");
+
     assert.match(refreshCookie, /HttpOnly/i);
     assert.match(refreshCookie, /Path=\/api\/v1\/auth/i);
     assert.match(refreshCookie, /SameSite=Lax/i);
     assert.match(refreshCookie, /Expires=Thu, 01 Jan 1970/i);
+
+    assert.match(csrfCookie, /Path=\//i);
+    assert.match(csrfCookie, /Expires=Thu, 01 Jan 1970/i);
 };
 
 test("HTTP logout revokes session and clears refresh cookie", async () => {
@@ -186,11 +198,9 @@ test("HTTP logout succeeds when refresh cookie is missing", async () => {
 
     const body = await response.json();
 
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.message, "Logout successful");
-
-    assertCookieCleared(response);
+    assert.equal(response.status, 403);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "CSRF token is missing or invalid");
 });
 
 test("HTTP logout succeeds with an invalid refresh cookie", async () => {
@@ -204,11 +214,9 @@ test("HTTP logout succeeds with an invalid refresh cookie", async () => {
 
     const body = await response.json();
 
-    assert.equal(response.status, 200);
-    assert.equal(body.success, true);
-    assert.equal(body.message, "Logout successful");
-
-    assertCookieCleared(response);
+    assert.equal(response.status, 403);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "CSRF token is missing or invalid");
 });
 
 test("HTTP logout rejects a request with a malicious Origin", async () => {
@@ -266,3 +274,50 @@ test("expired database session cannot access protected routes", async () => {
     assert.equal(body.message, "Session is invalid or revoked");
 });
 
+test("HTTP logout rejects a request with missing CSRF header", async () => {
+    const refreshToken = "test-refresh-token";
+    const csrfToken = generateCsrfToken(refreshToken);
+
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: `refreshToken=${refreshToken}; csrfToken=${csrfToken}`,
+        },
+    });
+
+    assert.equal(response.status, 403);
+});
+
+test("HTTP logout rejects mismatched CSRF cookie and header", async () => {
+    const refreshToken = "test-refresh-token";
+    const csrfCookie = generateCsrfToken(refreshToken);
+    const csrfHeader = generateCsrfToken(refreshToken);
+
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: `refreshToken=${refreshToken}; csrfToken=${csrfCookie}`,
+            "X-CSRF-Token": csrfHeader,
+        },
+    });
+
+    assert.equal(response.status, 403);
+});
+
+test("HTTP logout rejects an invalid CSRF signature", async () => {
+    const refreshToken = "test-refresh-token";
+    const csrfToken = generateCsrfToken("different-refresh-token");
+
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: `refreshToken=${refreshToken}; csrfToken=${csrfToken}`,
+            "X-CSRF-Token": csrfToken,
+        },
+    });
+
+    assert.equal(response.status, 403);
+});

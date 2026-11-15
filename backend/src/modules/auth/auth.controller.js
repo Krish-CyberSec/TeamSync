@@ -1,4 +1,4 @@
-
+import { generateCsrfToken } from "../../utils/csrf-token.js";
 import { generateAccessToken } from "../../utils/token.js";
 import { registerSchema, loginSchema } from "./auth.validation.js";
 
@@ -17,6 +17,13 @@ const refreshCookieOptions = {
   secure: env.NODE_ENV === "production",
   sameSite: "lax",
   path: "/api/v1/auth",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+const csrfCookieOptions = {
+  httpOnly: false,
+  secure: env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
@@ -57,7 +64,10 @@ export const login = async (req, res, next) => {
       session._id
     );
 
+    const csrfToken = generateCsrfToken(refreshToken);
+
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+    res.cookie("csrfToken", csrfToken, csrfCookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -116,11 +126,15 @@ export const refresh = async (req, res, next) => {
       session._id
     );
 
+    const csrfToken = generateCsrfToken(newRefreshToken);
+
     res.cookie(
       "refreshToken",
       newRefreshToken,
       refreshCookieOptions
     );
+
+    res.cookie("csrfToken", csrfToken, csrfCookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -150,6 +164,13 @@ export const logout = async (req, res, next) => {
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/v1/auth",
+    });
+
+    res.clearCookie("csrfToken", {
+      httpOnly: false,
       secure: env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/api/v1/auth",

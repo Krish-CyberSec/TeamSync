@@ -1,4 +1,4 @@
-
+import { requireCsrfToken } from "../../middleware/csrf.middleware.js";
 import { Router } from "express";
 
 import {
@@ -38,12 +38,14 @@ router.post(
   "/refresh",
   refreshLimiter,
   requireTrustedOrigin,
+  requireCsrfToken,
   refresh
 );
 
 router.post(
   "/logout",
   requireTrustedOrigin,
+  requireCsrfToken,
   logout
 );
 
