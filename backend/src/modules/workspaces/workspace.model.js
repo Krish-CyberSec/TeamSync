@@ -1,0 +1,43 @@
+
+import mongoose from "mongoose";
+
+const workspaceSchema = new mongoose.Schema(
+    {
+        name: {
+            type: String,
+            required: true,
+            trim: true,
+            minlength: 2,
+            maxlength: 80,
+        },
+
+        slug: {
+            type: String,
+            required: true,
+            unique: true,
+            lowercase: true,
+            trim: true,
+            match: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        },
+
+        description: {
+            type: String,
+            trim: true,
+            maxlength: 500,
+            default: "",
+        },
+
+        createdBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            required: true,
+        },
+    },
+    {
+        timestamps: true,
+    }
+);
+
+const Workspace = mongoose.model("Workspace", workspaceSchema);
+
+export default Workspace;
