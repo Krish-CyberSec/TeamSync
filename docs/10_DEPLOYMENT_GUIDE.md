@@ -61,12 +61,12 @@ These are the scripts declared in `frontend/package.json`. The frontend is a sta
 
 - Refresh cookies currently set `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`, seven-day max-age, and `Secure` only when `NODE_ENV=production`; no `Domain` is configured. Test cookie behavior behind the real TLS proxy and frontend/API topology.
 - CORS allows `CLIENT_URL` with credentials. Registration, login, refresh and logout also reject missing or mismatched `Origin` headers using `new URL(CLIENT_URL).origin`; `/auth/me` does not use this middleware. This Origin check and `SameSite=Lax` are CSRF defenses, not authentication, and there is no CSRF token mechanism. CORS alone is not CSRF protection.
-- Access JWTs expire after 15 minutes; refresh JWT/session lifetime is seven days. Logout revokes the matching refresh session only; a previously issued access JWT may remain usable until expiry.
+- Access JWTs expire after 15 minutes and include the MongoDB Session ID in `sid`; refresh JWT/session lifetime is seven days. Protected requests validate both JWT and exact active, unexpired database Session. Logout revokes the matching session, so its access JWT is rejected on the next protected request while another device's session remains valid. JWT expiry and database-session expiry are independent checks.
 - Refresh rotation uses MongoDB transactions. The target database must support transactions; verify backup/restore and index creation in an isolated staging deployment.
 - The error middleware hides 5xx response text in production but logs the full Error object. Database/startup paths also log error messages. Review and redact logs before production.
 - `express-rate-limit` limits login to 5/IP/15 minutes, registration to 5/IP/hour, and refresh to 30/IP/15 minutes; logout and `/auth/me` have no configured limit. It uses the default in-memory store, so counters reset on restart and are not shared across instances. Standard rate-limit headers are enabled.
 - The app does not set Express `trust proxy`. If deployed behind a proxy/load balancer, configure only the known proxy hops before trusting forwarded client IPs; incorrect proxy trust can undermine IP-based limits. The `loopback` trust setting appears in one integration test only, not the server configuration.
-- Email verification, logout-all-devices, access-token revocation, workspace authorization and monitoring/error tracking are not implemented.
+- Email verification, logout-all-devices, workspace authorization and monitoring/error tracking are not implemented. Workspace model/validation/service/controller files exist, but no workspace route or test exists.
 
 ### Production readiness checklist
 

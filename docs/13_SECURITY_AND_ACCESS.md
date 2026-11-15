@@ -18,7 +18,7 @@
 
 ## Security posture
 
-The backend contains a working auth/session foundation, but it is not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout and `/auth/me` routes exist. Trusted-Origin checks protect the four auth POST routes, and login/registration/refresh have IP-based in-memory rate limits. A CSRF token mechanism, shared rate-limit storage, email verification, logout-all-devices, immediate access-token revocation and workspace/project authorization are not implemented.
+The backend contains a working auth/session foundation, but it is not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout and `/auth/me` routes exist. Access JWTs are bound to database sessions and the Bearer middleware checks that session on protected requests, so revocation and database-session expiry take effect before JWT expiry. Trusted-Origin checks protect the four auth POST routes, and login/registration/refresh have IP-based in-memory rate limits. A CSRF token mechanism, shared rate-limit storage, email verification, logout-all-devices and workspace/project authorization are not implemented.
 
 | Control | Current state |
 |---|---|
@@ -28,13 +28,13 @@ The backend contains a working auth/session foundation, but it is not a fully ha
 | HS256 access/refresh JWT verification | Implemented |
 | Refresh JWT stored as SHA-256 hash in Session | Implemented |
 | Refresh rotation, family replay response, DB transaction | Implemented; integration tests exist but were not run for this doc task |
-| Bearer auth on `/auth/me` | Implemented; not checked against a session/revocation list |
+| Bearer auth on `/auth/me` | Implemented; verifies matching user/session, revocation and database expiry |
 | Trusted-Origin validation on register/login/refresh/logout | Implemented; missing/mismatched Origin returns 403 |
 | CSRF token mechanism | Not implemented; Origin and SameSite=Lax provide defenses but are not a complete CSRF system |
 | Login/register/refresh rate limits | Implemented with default in-memory store; not shared across instances |
 | Production proxy trust configuration | Not configured in the app |
 | Workspace/project/resource authorization | Not implemented |
-| Automated auth HTTP/service tests | Partial; register/login, logout, rate-limit and refresh-service tests exist; `/auth/me` and successful refresh-controller HTTP tests are absent |
+| Automated auth HTTP/service tests | Partial; source assertions cover `/auth/me` active/revoked/expired sessions, multi-device isolation, logout, register/login, rate limits and refresh service; test execution was not verified here |
 
 ## Implemented identity controls
 
@@ -50,9 +50,9 @@ Password hashes are not returned in auth DTOs. Email verification is not impleme
 
 ### Access-token authentication
 
-`authenticate` reads `Authorization: Bearer <token>`, verifies JWT signature/expiry/issuer/algorithm/token type, checks `sub` is a valid MongoDB ObjectId, loads the current user, rejects missing users with 401 and inactive users with 403, then attaches a limited `req.user` DTO. It is currently applied to `GET /api/v1/auth/me`.
+`authenticate` reads `Authorization: Bearer <token>`, verifies JWT signature/expiry/issuer/algorithm/token type, validates both `sub` and `sid` as MongoDB ObjectIds, loads the current user, rejects missing users with 401 and inactive users with 403, then requires the exact Session (`_id: sid`, `user: sub`) to exist with `revokedAt: null` and `expiresAt > now`. Missing, revoked or expired sessions receive 401. It attaches a limited `req.user` DTO that includes `sessionId`. It is currently applied to `GET /api/v1/auth/me`.
 
-The access token has `tokenType: "access"`, issuer `teamsync`, a string `sub`, HS256 signature and 15-minute expiry. It has no `sid` claim, and the middleware does not query Session state. Therefore logout/revocation does not immediately invalidate an already-issued access token; the token may remain accepted until expiration, unless the user is deleted/suspended.
+The access token has `tokenType: "access"`, issuer `teamsync`, string `sub`, `sid`, HS256 signature and 15-minute expiry. Login binds `sid` to the created Session ID; refresh binds it to the replacement Session ID. Each protected request checks that exact session in MongoDB. A signed JWT can therefore still be within its JWT validity window but be unauthorized because its database session was revoked, deleted or expired.
 
 ## JWT and browser token transport
 
@@ -60,10 +60,16 @@ The access token has `tokenType: "access"`, issuer `teamsync`, a string `sub`, H
 
 | Token | Claims | Lifetime | Transport |
 |---|---|---:|---|
-| Access | `iss: teamsync`, `sub`, `tokenType: access` | 15 minutes | Login/refresh JSON response; client should keep in memory |
+| Access | `iss: teamsync`, `sub`, `sid`, `tokenType: access` | 15 minutes | Login/refresh JSON response; client should keep in memory |
 | Refresh | `iss: teamsync`, `sub`, `tokenType: refresh`, `sid` | 7 days | `HttpOnly` cookie; never returned in JSON |
 
 The refresh cookie currently sets `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`, seven-day max-age, and `Secure` only when `NODE_ENV=production`; no `Domain` is configured. This must be reviewed against actual HTTPS, deployment topology, and cross-site frontend/API origins before production.
+
+### Session-bound access tokens and expiry
+
+The `sid` claim binds an access JWT to one Session document. For a protected request, both JWT `exp` and the database session query must pass; they are independent clocks. Access JWTs expire after 15 minutes, while a Session is created with a seven-day `expiresAt` (or can be revoked sooner). JWT expiry denies an old token even if its Session remains active; session expiry or revocation denies a token even while its JWT remains cryptographically valid. MongoDB TTL deletion is asynchronous, but the middleware explicitly checks `expiresAt` and requires the Session document on every protected request.
+
+Logout updates only the Session identified by the refresh cookie. Access tokens carrying that Session's `sid` then fail authentication immediately on their next protected request. Another device's independently created session has a different `sid` and remains valid. This is server-side session revocation, not a JWT denylist or signing-key change.
 
 ## Origin validation and rate limiting
 
@@ -148,12 +154,12 @@ MongoDB transactions require a replica set or sharded deployment. Tests should u
 - If the cookie is missing, malformed, expired or cannot identify a valid active session, service returns false/no-op; controller still clears the cookie and returns HTTP 200.
 - On a matching session, it is revoked, then the cookie is cleared with the same path/security attributes and HTTP 200 is returned.
 - If MongoDB fails during revocation, the error is forwarded before cookie clearing; the client may receive a 5xx and the cookie is not explicitly cleared by this handler.
-- Logout does **not** revoke already-issued access JWTs. Bearer middleware does not consult sessions, so an access token can remain valid until its 15-minute expiration.
-- Logout-all-devices and access-token revocation are not implemented.
+- Logout revokes the matching Session; the Bearer middleware rejects access JWTs bound to it on subsequent protected requests. It does not affect a different device session.
+- Logout-all-devices is not implemented.
 
 ## Authorization model
 
-Authorization must follow verified identity → active WorkspaceMember → workspace permission → ProjectMember/project policy → resource ownership/assignment. Roles are `OWNER`, `ADMIN`, `MANAGER`, `MEMBER`; ordinary project access requires ProjectMember; personal tasks are owner-only. These are approved requirements, not implemented workspace/project endpoints or middleware. A valid JWT proves identity only.
+Authorization must follow verified identity → active WorkspaceMember → workspace permission → ProjectMember/project policy → resource ownership/assignment. Roles are `OWNER`, `ADMIN`, `MANAGER`, `MEMBER`; ordinary project access requires ProjectMember; personal tasks are owner-only. Workspace and WorkspaceMember models plus a transactional creation service/controller now exist, but no workspace route or role/membership authorization middleware is mounted or tested. Project authorization and tenant isolation are also not implemented. A valid JWT and matching active session prove authenticated identity only, not resource access.
 
 ## Limitations and hardening
 
@@ -162,12 +168,13 @@ Authorization must follow verified identity → active WorkspaceMember → works
 | CSRF / Origin | Exact Origin checks cover the four auth POST routes and the cookie is SameSite=Lax; no CSRF token exists | Validate behavior across deployed origins and decide whether an additional token is required; CORS alone is not protection |
 | Rate limiting | Per-IP limits use an in-memory process-local store; no shared storage or production proxy trust config | Configure a shared store and bounded trusted-proxy policy for multi-instance deployment |
 | Account enumeration | Duplicate registration is 409; inactive account is 403 | Review response policy and test enumeration behavior |
-| Access revocation | Access JWT has no session link and is accepted until expiry | Decide whether short expiry is sufficient or add a revocation strategy |
+| Access revocation | `sid` and a database Session lookup enforce revocation and session expiry on protected requests; this adds a database read per protected request | Verify failure/availability behavior and add tests for all protected routes as they are introduced |
 | Logout | Only current refresh session is revoked | Add logout-all-devices and tests |
 | Cookie deployment | `Secure` depends only on `NODE_ENV`; `SameSite=Lax` and cross-origin behavior need deployment review | Test exact production frontend/API origins, TLS termination and cookie scope |
 | Security headers | Helmet is enabled with defaults; policies not reviewed for product assets | Review CSP and deployment headers before release |
 | Logs | Error handler logs full 5xx Error objects; startup/DB failures log error messages | Redact and validate production log fields |
-| Verification | Six integration files exist but were not run in this documentation sync; no `/auth/me` or successful refresh-controller HTTP test | Run tests against isolated replica-set DB and expand failure/concurrency coverage |
-| Authorization | No workspace/project/resource checks | Implement server-side policies before adding protected product routes |
+| Verification | Six integration files exist but were not run in this documentation sync; `/auth/me` tests cover active/revoked/expired sessions and device isolation, but successful refresh-controller HTTP and broader failure paths are absent | Run tests against isolated replica-set DB and expand failure/concurrency coverage |
+| Workspace authorization | Workspace schemas and create service/controller exist, but no route, role enforcement, membership checks or tenant isolation | Add protected routes and server-side policies with cross-workspace negative tests before exposing product APIs |
+| Project authorization | No project/resource checks | Implement server-side policies before adding protected project routes |
 
 Do not treat the current implementation as production-ready. See the [API reference](07_API_DOCUMENTATION.md), [testing strategy](09_TESTING_STRATEGY.md), and [roadmap](08_FEATURE_ROADMAP.md).

@@ -259,7 +259,7 @@ The service verifies a provided refresh JWT and conditionally revokes only the m
 | 403 | Origin is missing or does not match the configured trusted Origin |
 | 500 | Database failure while attempting revocation; controller forwards error before clearing the cookie |
 
-Logout does not invalidate already-issued access JWTs. They remain usable until expiry because access-token authentication does not consult the Session collection.
+Access JWTs contain `sid`, the database Session ID used when the token was issued. Logout revokes that session; `authenticate` checks for the exact `(sid, user)` session with `revokedAt: null` and `expiresAt > now`, so the associated access JWT is rejected on the next protected request even if its JWT `exp` has not passed. Other device sessions have different IDs and remain valid. JWT expiry (15 minutes) and database-session expiry (seven days) are separate checks; either can deny access first.
 
 ## `GET /api/v1/auth/me`
 
@@ -276,7 +276,8 @@ Logout does not invalidate already-issued access JWTs. They remain usable until 
       "id": "<user-id>",
       "name": "Example User",
       "email": "user@example.test",
-      "status": "active"
+      "status": "active",
+      "sessionId": "<session-id>"
     }
   }
 }
@@ -284,11 +285,11 @@ Logout does not invalidate already-issued access JWTs. They remain usable until 
 
 | Status | Meaning |
 |---:|---|
-| 401 | Missing/malformed Authorization header, invalid/expired JWT, invalid subject, or user not found |
+| 401 | Missing/malformed Authorization header; invalid/expired JWT; invalid subject; user not found; or matching Session missing, revoked or expired |
 | 403 | User account is not active |
 | 500 | Database/unexpected error forwarded to central handler |
 
-The middleware verifies signature, issuer, algorithm, expiry and access-token type, validates the user ObjectId, loads the current user, checks active status, and attaches a limited DTO to `req.user`. It does not check session revocation or workspace/project/resource permissions.
+The middleware verifies signature, issuer, algorithm, expiry, access-token type and `sid`; validates the user and session ObjectIds; loads the current active user; then requires the exact matching database Session to exist, be unrevoked and have `expiresAt` in the future. It attaches a limited DTO, including `sessionId`, to `req.user`. The database check makes session revocation effective for access tokens on protected requests. It does not implement workspace/project/resource authorization.
 
 ## User-reported manual checks
 
@@ -296,4 +297,4 @@ The project owner previously reported Postman/MongoDB checks for registration 20
 
 ## Planned API
 
-Workspace/membership/invitation, project/member, task/comment, notification, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.
+There is no registered workspace endpoint. Workspace model, validation, creation service and controller files exist, but no workspace routes file is mounted in `app.js`; workspace creation is not an active API contract. Workspace membership administration/RBAC, invitations, project/member, task/comment, notification, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.

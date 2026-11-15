@@ -1,5 +1,7 @@
 # Project Overview
 
+This document describes TeamSync's product vision, not a feature-completion claim. The current implementation status is tracked in the [feature roadmap](08_FEATURE_ROADMAP.md).
+
 ## Vision
 A dependable collaboration platform where individuals organize their own work and teams coordinate projects and communication in one place.
 

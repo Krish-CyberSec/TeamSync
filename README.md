@@ -26,13 +26,14 @@ Core product differentiators are one account for personal and team work, indepen
 | Backend bootstrap | Express ES modules, config validation, MongoDB connection lifecycle | IMPLEMENTED; live DB startup not verified here |
 | Health | Public `GET /api/v1/health` | COMPLETED; HTTP smoke check passed |
 | Registration | Strict validation, bcrypt-backed persistence, safe DTO, trusted-Origin and IP limit | IMPLEMENTED; HTTP integration coverage and owner-reported manual checks |
-| Login | Credential check, server-side refresh session, access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; DB-backed integration tests exist but were not run here |
+| Login | Credential check, server-side refresh session, session-bound access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; DB-backed integration tests exist but were not run here |
 | Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; integration tests exist but were not run here |
 | Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; service and HTTP tests exist but were not run here |
-| Current-user endpoint | Bearer authentication and active-account check | IMPLEMENTED; no dedicated middleware/route test |
+| Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; exercised by logout HTTP integration tests (not run here) |
 | Auth Origin protection | Exact `CLIENT_URL` Origin required for register/login/refresh/logout | IMPLEMENTED; this is a CSRF defense, not authentication; no CSRF token mechanism |
 | Auth rate limits | Login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
-| Workspace/RBAC/projects/tasks | Multi-tenant collaboration domains | PLANNED |
+| Workspace creation slice | Workspace/member models, validation, transactional service and controller | PARTIAL; no route, integration test, or workspace authorization |
+| Workspace RBAC, projects, tasks | Multi-tenant collaboration domains | PLANNED |
 | Socket.IO | Authorized real-time delivery | PLANNED |
 | Frontend product UI | Router, auth UI, dashboards and API integration | PLANNED; current app is a starter |
 
@@ -47,9 +48,9 @@ See the [roadmap and implementation tracker](docs/08_FEATURE_ROADMAP.md) for evi
 | Validation | Zod |
 | Passwords | bcrypt |
 | Tokens | jsonwebtoken (HS256) |
-| HTTP security/config | Helmet, CORS, cookie-parser, dotenv |
+| HTTP security/config | Helmet, CORS, cookie-parser, express-rate-limit, dotenv |
 | Frontend scaffold | React, Vite, Tailwind CSS v4 |
-| Selected but not integrated frontend libraries | React Router, TanStack Query, Zustand, Axios, Lucide React |
+| Frontend libraries | React Router, TanStack Query, Zustand, Axios and Lucide React are declared; Axios/Query clients are scaffolded, but not integrated into the rendered app |
 | Automated backend integration tests | Node.js `node:test`, `node:assert/strict`; MongoDB required |
 
 ## Architecture
@@ -64,6 +65,7 @@ flowchart LR
   Routes --> Controllers["Controllers"]
   Controllers --> Services["Auth services"]
   Services --> Models["Mongoose User and Session models"]
+  WorkspaceCode["Workspace models/service/controller<br/>not mounted"] -.-> Models
   Models --> MongoDB[("MongoDB")]
   Services --> Tokens["JWT and SHA-256 helpers"]
 ```
@@ -76,7 +78,7 @@ For module responsibilities and request/database/auth flows, see [System Archite
 backend/src/config/       dotenv and Zod configuration
 backend/src/database/     Mongoose connection
 backend/src/middleware/   auth and error middleware
-backend/src/modules/      auth, health, and user model
+backend/src/modules/      auth, health, users, and partial workspace creation slice
 backend/src/utils/        JWT and refresh-token hash helpers
 backend/tests/integration/ MongoDB transaction, auth HTTP/service and rate-limit tests
 frontend/src/              starter app plus scaffolding
@@ -107,7 +109,7 @@ For Atlas, create a cluster, a database user with only the required application 
 Available scripts are `npm run dev` and `npm start`. There is no `test` script. The DB-backed tests can be run with Node's test runner from `backend/`, after configuring a **dedicated disposable test database** in `MONGO_URI`:
 
 ```powershell
-node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js tests/integration/auth-register-login.test.js tests/integration/auth-logout.test.js tests/integration/auth-logout.http.test.js tests/integration/rate-limit.test.js
+node --test tests/integration/*.test.js
 ```
 
 The transaction test uses the database named by the URI; never point it at production or shared data. See [Testing Strategy](docs/09_TESTING_STRATEGY.md).
@@ -152,7 +154,7 @@ All current paths are mounted beneath `/api/v1`.
 | `POST /api/v1/auth/logout` | Refresh cookie optional | Attempts single-session revocation; clears cookie |
 | `GET /api/v1/auth/me` | Bearer access token | Returns current active user's profile DTO |
 
-Register/login/refresh/logout also require `Origin` matching `new URL(CLIENT_URL).origin`. Login, registration and refresh use in-memory IP-based rate limits; health, logout and `/auth/me` do not. The app does not configure production proxy trust or shared rate-limit storage. See [API Documentation](docs/07_API_DOCUMENTATION.md) for exact contracts. A CSRF token mechanism, logout-all-devices, immediate access-token revocation and workspace/resource authorization are not implemented.
+Register/login/refresh/logout also require `Origin` matching `new URL(CLIENT_URL).origin`. Login, registration and refresh use in-memory IP-based rate limits; health, logout and `/auth/me` do not. Access JWTs are bound to a database session, which is checked on protected requests; revoking a session (including logout) invalidates its access tokens immediately, while independent device sessions remain active. The app does not configure production proxy trust or shared rate-limit storage. Workspace model/service/controller code exists, but no workspace route or authorization is active. See [API Documentation](docs/07_API_DOCUMENTATION.md) for current endpoint contracts. A CSRF token mechanism, logout-all-devices, and workspace/resource authorization are not implemented.
 
 ## Documentation
 

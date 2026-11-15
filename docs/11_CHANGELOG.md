@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-15 — Session-bound access and workspace slice documented
+- Updated: project context, root/backend/frontend onboarding, architecture, database schema, API, security, testing, roadmap and developer guidance to reflect the newer source state.
+- Corrected: access JWTs now carry `sid`; protected requests validate the matching active, unexpired database Session, so logout invalidates that device's access tokens while independent device sessions remain active.
+- Documented: Workspace/WorkspaceMember schemas, unique slug and compound membership index declarations, strict creation validation, and transactional creation of the workspace plus initial OWNER membership.
+- Clarified: workspace creation is not exposed by a route, has no tests, and does not implement RBAC, membership authorization or tenant isolation. Projects/tasks/notifications/chat remain placeholders.
+- Added: an 8–10 week private-beta planning estimate based on 2–3 development hours per day, with launch gates and deferred post-beta scope.
+- The six integration files were inspected but not run; no test pass is claimed. No application source, tests, package files, environment files or database data were changed.
+
 ## 2026-11-15 — Authentication hardening and test documentation synchronized
 - Updated: project context, agent guidance, root/backend onboarding, architecture, API, roadmap, testing, deployment, database, security, developer and UI/requirements status notes.
 - Corrected: Origin validation and auth rate limiting are implemented; documented guarded routes, limits, in-memory store, proxy configuration gap, and remaining CSRF limitation.

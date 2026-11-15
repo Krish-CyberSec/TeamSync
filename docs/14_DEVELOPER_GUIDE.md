@@ -25,13 +25,14 @@ backend/src/
   modules/auth/                  auth routes/controller/schemas/service/Session
   modules/health/                health route/controller
   modules/users/                 User model
+  modules/workspaces/            Workspace/member models, validation, transactional creation service and controller; no route
   utils/                         JWT signing/verifying and SHA-256 token hash
-backend/tests/integration/       MongoDB transaction and auth rotation tests
+backend/tests/integration/       six transaction, auth service/HTTP and rate-limit test files
 frontend/src/                    React/Vite starter and scaffolding
 docs/                            Product, architecture, API, security and operations docs
 ```
 
-Only health and auth are active backend route groups. Other module directories are placeholders. The frontend is not yet a product client. Auth POST routes apply exact trusted-Origin checks to register/login/refresh/logout and IP-based in-memory limits to login/register/refresh.
+Only health and auth have active route groups. Workspace model/validation/service/controller files implement a transactional creation slice, but no workspace routes file is mounted and the slice has no tests or authorization. Projects, tasks, notifications and chat directories are placeholders. The frontend is not yet a product client. Auth POST routes apply exact trusted-Origin checks to register/login/refresh/logout and IP-based in-memory limits to login/register/refresh.
 
 ## Development workflow
 
@@ -103,22 +104,24 @@ The handler logs full 5xx Error objects to console today; production logging red
 
 Use `node:test` and `node:assert/strict`. Place integration tests under `backend/tests/integration/`, isolate generated records, and clean up in `after` hooks. Transaction tests need a replica set or sharded cluster. Ensure each test database is disposable; the current transaction test uses `MONGO_URI`'s selected DB, while auth/logout suites select `teamsync_test`.
 
-Six integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP and rate-limit HTTP behavior. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
+Six integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP (including bound access-token invalidation, device isolation and expired database sessions), and rate-limit HTTP behavior. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
 
 ```powershell
-node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js tests/integration/auth-register-login.test.js tests/integration/auth-logout.test.js tests/integration/auth-logout.http.test.js tests/integration/rate-limit.test.js
+node --test tests/integration/*.test.js
 ```
 
-No npm test script exists. The test files were not run during the latest documentation sync. No dedicated `/auth/me` HTTP test or successful refresh-controller HTTP test exists yet.
+No npm test script exists. The test files were not run during the latest documentation sync; source assertions exist but current test pass status is unverified. Workspace files have no tests, and successful refresh-controller HTTP and broader Bearer failure cases remain uncovered.
 
 ## Security conventions
 
 - Store only bcrypt password hashes and SHA-256 refresh-token digests; never persist raw bearer tokens.
-- Verify JWT algorithm, issuer, expiry and token purpose; validate identifiers before querying.
+- Verify JWT algorithm, issuer, expiry and token purpose; validate identifiers before querying. Access JWTs carry the Session ID (`sid`), and protected requests require the matching user/session record to be active and unexpired.
 - Keep access JWT in memory; refresh token in HttpOnly cookie. The current cookie is `SameSite=Lax`, uses path `/api/v1/auth`, and sets `Secure` only in production.
+- Session revocation invalidates access tokens bound to that session on the next protected request; do not describe them as valid until JWT expiry. Session and JWT expiration are independent checks.
 - Registration/login/refresh/logout require the Origin derived from `CLIENT_URL`; missing/mismatched values receive 403. This is a CSRF defense, not authentication, and no CSRF token is implemented. CORS alone is not CSRF protection.
 - Login is limited to 5/IP/15 minutes, registration to 5/IP/hour and refresh to 30/IP/15 minutes. The default limiter store is in-memory and not shared across instances; the app has no production `trust proxy` setting.
 - Enforce account/session state and, for product resources, workspace/project authorization on the server.
+- Do not treat the current workspace creation controller/service as workspace authorization; no workspace API route or RBAC check is implemented.
 - Use allowlisted DTOs/updates, bounded list operations and tests for negative access paths.
 - Do not claim production readiness: rate-limit shared storage/proxy configuration, broader CSRF strategy, log redaction, operational controls and security verification remain.
 
