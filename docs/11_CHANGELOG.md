@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-15 — Authentication hardening and test documentation synchronized
+- Updated: project context, agent guidance, root/backend onboarding, architecture, API, roadmap, testing, deployment, database, security, developer and UI/requirements status notes.
+- Corrected: Origin validation and auth rate limiting are implemented; documented guarded routes, limits, in-memory store, proxy configuration gap, and remaining CSRF limitation.
+- Catalogued: all six current integration test files and their source-verified coverage; the DB-backed suites were not run for this documentation update.
+- Clarified: PRD/SRS/UI documents are approved product requirements and not implementation inventories; only User and Session are currently implemented Mongoose models.
+- No application source, package manifest, lockfile or environment file changed. No ticket ID was supplied or identified in the repository.
+
 ## 2026-11-14 — Refresh sessions and auth integration tests documented
 - Updated: root/backend onboarding, architecture diagrams, active API reference, security/session lifecycle, environment guide, development guide and milestone tracker to match the current workspace source.
 - Documented: refresh-cookie attributes, SHA-256 token hashes, Session family IDs, transactional rotation, replay response, conditional updates, logout behavior and access-token revocation limitation.

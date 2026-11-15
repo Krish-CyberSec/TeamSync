@@ -7,7 +7,10 @@ The implemented `User` model stores `name`, `email`, `passwordHash` (`select: fa
 
 The implemented `Session` model has a required User reference, required indexed `familyId`, required hidden unique `tokenHash`, `expiresAt`, nullable `revokedAt`, nullable `replacedBySession`, nullable `lastUsedAt`, timestamps, and a TTL index on `expiresAt`. The TTL index asynchronously cleans up expired records; it is not an authorization check. Auth services create sessions, store SHA-256 token digests, rotate sessions transactionally, revoke active family members on a matching replay, and revoke a single session at logout. Physical MongoDB index creation and live transaction execution were not verified in this documentation update.
 
-## R1 collections
+## Planned R1 collection designs
+
+Only the `User` and `Session` Mongoose models currently exist. The remaining collections below describe approved/planned schema, not implemented models.
+
 - **User:** implemented fields are name, normalized unique email, passwordHash (`select:false`), status and timestamps. Planned additions include emailVerifiedAt, avatar, bio, deletedAt and lastSeen.
 - **Session:** implemented fields are user → User, familyId, tokenHash (`select:false`, unique), expiresAt, revokedAt, replacedBySession → Session, lastUsedAt and timestamps. Store only a cryptographic hash of refresh tokens; never store raw tokens. Family rotation/replay behavior is implemented in the auth service; see the [security model](13_SECURITY_AND_ACCESS.md).
 - **Workspace:** name, description, createdBy → User, deletedAt, timestamps.

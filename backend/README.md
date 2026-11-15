@@ -23,7 +23,9 @@ backend/
 │   ├── database/connection.js         # Mongoose connection
 │   ├── middleware/
 │   │   ├── auth.middleware.js         # Bearer access-token authentication
-│   │   └── error.middleware.js        # API error mapping
+│   │   ├── error.middleware.js        # API error mapping
+│   │   ├── origin.middleware.js       # Trusted-Origin check for auth POST routes
+│   │   └── rate-limit.middleware.js   # In-memory login/register/refresh limiters
 │   ├── modules/
 │   │   ├── auth/                      # routes, controller, validation, service, Session model
 │   │   ├── health/                    # health route/controller
@@ -65,7 +67,7 @@ Runtime dependencies in `package.json`: `bcrypt`, `cookie-parser`, `cors`, `dote
 | `npm ci` | Install the lockfile dependencies |
 | `npm run dev` | Run `src/server.js` with Nodemon |
 | `npm start` | Run `src/server.js` |
-| `node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js` | Run MongoDB integration tests |
+| `node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js tests/integration/auth-register-login.test.js tests/integration/auth-logout.test.js tests/integration/auth-logout.http.test.js tests/integration/rate-limit.test.js` | Run all six integration test files |
 
 No `test` script is declared. Integration tests require MongoDB transaction support and a dedicated test database.
 
@@ -99,6 +101,7 @@ All current endpoints are mounted under `/api/v1`.
 | GET | `/auth/me` | Bearer access token | Load active user and return profile DTO |
 
 See [API reference](../docs/07_API_DOCUMENTATION.md) for request schemas and response/error formats.
+Register, login, refresh and logout also require an `Origin` matching `new URL(CLIENT_URL).origin`; missing or mismatched values return 403. This is a CSRF defense, not authentication, and there is no CSRF token mechanism. Login is limited to 5/IP/15 minutes, registration to 5/IP/hour, and refresh to 30/IP/15 minutes. Logout and `/auth/me` have no configured limiter.
 
 ## Authentication behavior
 
@@ -111,8 +114,8 @@ See [API reference](../docs/07_API_DOCUMENTATION.md) for request schemas and res
 
 ## Tests and limitations
 
-Two Node built-in integration test files exist. The auth suite tests valid rotation, invalid JWT, replay-family revocation, simultaneous refresh attempts, suspended users, and explicit session expiry. The transaction suite checks commit and intentional rollback.
+Six Node built-in integration test files exist. They cover transaction commit/rollback; rotation, invalid JWT, replay-family revocation, concurrent refresh attempts, suspended users and explicit session expiry; registration/login HTTP validation and cookie behavior; logout service and HTTP behavior; and rate-limit thresholds.
 
-These tests were not run during the documentation update because they require MongoDB. Configure `MONGO_URI` to a disposable database before running: the auth suite selects `teamsync_test`, while the transaction test uses the database named in the URI and creates `teamsync_transaction_probe` there. Do not point that URI at production/shared data. Tests do not yet cover login/register endpoints, logout behavior, auth middleware, CSRF, Origin validation, or broad failure/concurrency cases.
+The tests were not run during this documentation update. MongoDB-backed tests require a disposable replica-set-capable database. Auth/logout suites select `teamsync_test`, while the transaction test uses the database named in the URI and creates `teamsync_transaction_probe` there. Do not point that URI at production/shared data. There is no dedicated `/auth/me` HTTP test or successful refresh-controller HTTP test.
 
-CSRF and Origin protection, authentication rate limiting, logout-all-devices, access-token revocation, and production cookie/security-header review remain outstanding. This is not a claim of production readiness.
+The rate limiter uses its default in-memory store; counters reset on process restart and are not shared across instances. No production proxy trust policy is configured. A CSRF token mechanism, shared rate-limit storage, logout-all-devices, access-token revocation, and production cookie/security-header review remain outstanding. This is not a claim of production readiness.

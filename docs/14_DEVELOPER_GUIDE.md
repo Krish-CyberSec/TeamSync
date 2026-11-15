@@ -21,7 +21,7 @@ backend/src/
   server.js                      MongoDB-first startup and signal shutdown
   config/env.js                  dotenv + Zod configuration
   database/connection.js         Mongoose connection
-  middleware/                    Bearer auth and centralized errors
+  middleware/                    Bearer auth, trusted-Origin checks, rate limits and errors
   modules/auth/                  auth routes/controller/schemas/service/Session
   modules/health/                health route/controller
   modules/users/                 User model
@@ -31,7 +31,7 @@ frontend/src/                    React/Vite starter and scaffolding
 docs/                            Product, architecture, API, security and operations docs
 ```
 
-Only health and auth are active backend route groups. Other module directories are placeholders. The frontend is not yet a product client.
+Only health and auth are active backend route groups. Other module directories are placeholders. The frontend is not yet a product client. Auth POST routes apply exact trusted-Origin checks to register/login/refresh/logout and IP-based in-memory limits to login/register/refresh.
 
 ## Development workflow
 
@@ -101,24 +101,25 @@ The handler logs full 5xx Error objects to console today; production logging red
 
 ## Integration tests
 
-Use `node:test` and `node:assert/strict`. Place MongoDB integration tests under `backend/tests/integration/`, isolate generated records, and clean up in `after` hooks. Transaction tests need a replica set or sharded cluster. Ensure each test database is disposable; the current transaction test uses `MONGO_URI`'s selected DB.
+Use `node:test` and `node:assert/strict`. Place integration tests under `backend/tests/integration/`, isolate generated records, and clean up in `after` hooks. Transaction tests need a replica set or sharded cluster. Ensure each test database is disposable; the current transaction test uses `MONGO_URI`'s selected DB, while auth/logout suites select `teamsync_test`.
 
-Current command from `backend/`:
+Six integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP and rate-limit HTTP behavior. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
 
 ```powershell
-node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js
+node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js tests/integration/auth-register-login.test.js tests/integration/auth-logout.test.js tests/integration/auth-logout.http.test.js tests/integration/rate-limit.test.js
 ```
 
-No npm test script exists. The current suites cover transaction commit/rollback and refresh-session rotation/replay/concurrency/account/session-expiry behavior, not HTTP endpoints or logout.
+No npm test script exists. The test files were not run during the latest documentation sync. No dedicated `/auth/me` HTTP test or successful refresh-controller HTTP test exists yet.
 
 ## Security conventions
 
 - Store only bcrypt password hashes and SHA-256 refresh-token digests; never persist raw bearer tokens.
 - Verify JWT algorithm, issuer, expiry and token purpose; validate identifiers before querying.
 - Keep access JWT in memory; refresh token in HttpOnly cookie. The current cookie is `SameSite=Lax`, uses path `/api/v1/auth`, and sets `Secure` only in production.
-- Cookie-authenticated routes need CSRF/Origin protection; current CORS configuration alone is not sufficient.
+- Registration/login/refresh/logout require the Origin derived from `CLIENT_URL`; missing/mismatched values receive 403. This is a CSRF defense, not authentication, and no CSRF token is implemented. CORS alone is not CSRF protection.
+- Login is limited to 5/IP/15 minutes, registration to 5/IP/hour and refresh to 30/IP/15 minutes. The default limiter store is in-memory and not shared across instances; the app has no production `trust proxy` setting.
 - Enforce account/session state and, for product resources, workspace/project authorization on the server.
 - Use allowlisted DTOs/updates, bounded list operations and tests for negative access paths.
-- Do not claim production readiness until CSRF, rate limiting, log redaction, operational controls and security tests are complete.
+- Do not claim production readiness: rate-limit shared storage/proxy configuration, broader CSRF strategy, log redaction, operational controls and security verification remain.
 
 See [Security and Access Model](13_SECURITY_AND_ACCESS.md) and [Decision Log](12_DECISION_LOG.md) for approved invariants.

@@ -1,13 +1,14 @@
 # Security and Access Model
 
 **Approved R1 baseline:** 2026-11-13
-**Implementation review:** 2026-11-14
+**Implementation review:** 2026-11-15
 
 ## Contents
 
 - [Security posture](#security-posture)
 - [Implemented identity controls](#implemented-identity-controls)
 - [JWT and browser token transport](#jwt-and-browser-token-transport)
+- [Origin validation and rate limiting](#origin-validation-and-rate-limiting)
 - [Server-side sessions](#server-side-sessions)
 - [Refresh rotation and replay detection](#refresh-rotation-and-replay-detection)
 - [Concurrency and transaction behavior](#concurrency-and-transaction-behavior)
@@ -17,7 +18,7 @@
 
 ## Security posture
 
-The backend now contains a working auth/session foundation, not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout and `/auth/me` routes exist. CSRF/Origin controls, rate limiting, email verification, logout-all-devices, immediate access-token revocation and workspace/project authorization do not.
+The backend contains a working auth/session foundation, but it is not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout and `/auth/me` routes exist. Trusted-Origin checks protect the four auth POST routes, and login/registration/refresh have IP-based in-memory rate limits. A CSRF token mechanism, shared rate-limit storage, email verification, logout-all-devices, immediate access-token revocation and workspace/project authorization are not implemented.
 
 | Control | Current state |
 |---|---|
@@ -28,10 +29,12 @@ The backend now contains a working auth/session foundation, not a fully hardened
 | Refresh JWT stored as SHA-256 hash in Session | Implemented |
 | Refresh rotation, family replay response, DB transaction | Implemented; integration tests exist but were not run for this doc task |
 | Bearer auth on `/auth/me` | Implemented; not checked against a session/revocation list |
-| CSRF and explicit Origin validation | Not implemented |
-| Authentication rate limits | Not implemented |
+| Trusted-Origin validation on register/login/refresh/logout | Implemented; missing/mismatched Origin returns 403 |
+| CSRF token mechanism | Not implemented; Origin and SameSite=Lax provide defenses but are not a complete CSRF system |
+| Login/register/refresh rate limits | Implemented with default in-memory store; not shared across instances |
+| Production proxy trust configuration | Not configured in the app |
 | Workspace/project/resource authorization | Not implemented |
-| Automated logout, middleware and HTTP endpoint tests | Not implemented |
+| Automated auth HTTP/service tests | Partial; register/login, logout, rate-limit and refresh-service tests exist; `/auth/me` and successful refresh-controller HTTP tests are absent |
 
 ## Implemented identity controls
 
@@ -61,6 +64,20 @@ The access token has `tokenType: "access"`, issuer `teamsync`, a string `sub`, H
 | Refresh | `iss: teamsync`, `sub`, `tokenType: refresh`, `sid` | 7 days | `HttpOnly` cookie; never returned in JSON |
 
 The refresh cookie currently sets `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`, seven-day max-age, and `Secure` only when `NODE_ENV=production`; no `Domain` is configured. This must be reviewed against actual HTTPS, deployment topology, and cross-site frontend/API origins before production.
+
+## Origin validation and rate limiting
+
+`requireTrustedOrigin` derives the expected value from `new URL(CLIENT_URL).origin` and compares it exactly with the incoming `Origin` header. Missing or non-matching headers receive HTTP 403 with `{"success":false,"message":"Request origin is not allowed"}`. It is applied to `POST /api/v1/auth/register`, `/login`, `/refresh`, and `/logout`; `GET /auth/me` is not protected by this middleware. The Origin check is a CSRF defense for these routes, not proof of identity. CORS configuration alone does not prevent CSRF, and there is no synchronizer/double-submit CSRF token.
+
+The refresh cookie is `SameSite=Lax`, which is an additional browser control. Cookie behavior still depends on browser site boundaries and deployment topology; do not describe the current controls as a complete, universally applicable CSRF guarantee.
+
+| Route | Per-IP limit | Window |
+|---|---:|---:|
+| `POST /api/v1/auth/login` | 5 | 15 minutes |
+| `POST /api/v1/auth/register` | 5 | 1 hour |
+| `POST /api/v1/auth/refresh` | 30 | 15 minutes |
+
+These are configured through `express-rate-limit` with standard headers enabled and legacy headers disabled. No custom store is supplied, so its default in-memory store is used: counts reset on process restart and are not shared by multiple backend instances. Logout, `/auth/me` and health have no configured limiter. The app does not set Express `trust proxy`; deployments behind a reverse proxy must review and explicitly configure trusted hops so limits use the intended client IP without trusting arbitrary forwarded headers. The `loopback` proxy setting in the registration/login test is test-only.
 
 ## Server-side sessions
 
@@ -142,15 +159,15 @@ Authorization must follow verified identity → active WorkspaceMember → works
 
 | Area | Current limitation | Follow-up |
 |---|---|---|
-| CSRF / Origin | No CSRF token validation or explicit Origin check on cookie-authenticated refresh/logout | Define and test a CSRF and trusted-Origin strategy; CORS alone is not protection |
-| Rate limiting | Auth endpoints have no rate limiting | Add registration/login/refresh abuse controls |
+| CSRF / Origin | Exact Origin checks cover the four auth POST routes and the cookie is SameSite=Lax; no CSRF token exists | Validate behavior across deployed origins and decide whether an additional token is required; CORS alone is not protection |
+| Rate limiting | Per-IP limits use an in-memory process-local store; no shared storage or production proxy trust config | Configure a shared store and bounded trusted-proxy policy for multi-instance deployment |
 | Account enumeration | Duplicate registration is 409; inactive account is 403 | Review response policy and test enumeration behavior |
 | Access revocation | Access JWT has no session link and is accepted until expiry | Decide whether short expiry is sufficient or add a revocation strategy |
 | Logout | Only current refresh session is revoked | Add logout-all-devices and tests |
 | Cookie deployment | `Secure` depends only on `NODE_ENV`; `SameSite=Lax` and cross-origin behavior need deployment review | Test exact production frontend/API origins, TLS termination and cookie scope |
 | Security headers | Helmet is enabled with defaults; policies not reviewed for product assets | Review CSP and deployment headers before release |
 | Logs | Error handler logs full 5xx Error objects; startup/DB failures log error messages | Redact and validate production log fields |
-| Verification | Integration tests exist but were not run here; no logout/auth middleware endpoint tests | Run tests against isolated replica-set DB and expand failure/concurrency coverage |
+| Verification | Six integration files exist but were not run in this documentation sync; no `/auth/me` or successful refresh-controller HTTP test | Run tests against isolated replica-set DB and expand failure/concurrency coverage |
 | Authorization | No workspace/project/resource checks | Implement server-side policies before adding protected product routes |
 
 Do not treat the current implementation as production-ready. See the [API reference](07_API_DOCUMENTATION.md), [testing strategy](09_TESTING_STRATEGY.md), and [roadmap](08_FEATURE_ROADMAP.md).

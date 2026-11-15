@@ -25,11 +25,13 @@ Core product differentiators are one account for personal and team work, indepen
 |---|---|---|
 | Backend bootstrap | Express ES modules, config validation, MongoDB connection lifecycle | IMPLEMENTED; live DB startup not verified here |
 | Health | Public `GET /api/v1/health` | COMPLETED; HTTP smoke check passed |
-| Registration | Strict validation, bcrypt-backed user persistence | IMPLEMENTED; owner reports manual Postman checks |
-| Login | Credential check, server-side refresh session, access token and HttpOnly cookie | IMPLEMENTED; DB-backed integration tests exist but were not run here |
+| Registration | Strict validation, bcrypt-backed persistence, safe DTO, trusted-Origin and IP limit | IMPLEMENTED; HTTP integration coverage and owner-reported manual checks |
+| Login | Credential check, server-side refresh session, access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; DB-backed integration tests exist but were not run here |
 | Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; integration tests exist but were not run here |
-| Logout | Revoke matching refresh session and clear cookie | IMPLEMENTED; no dedicated logout test |
+| Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; service and HTTP tests exist but were not run here |
 | Current-user endpoint | Bearer authentication and active-account check | IMPLEMENTED; no dedicated middleware/route test |
+| Auth Origin protection | Exact `CLIENT_URL` Origin required for register/login/refresh/logout | IMPLEMENTED; this is a CSRF defense, not authentication; no CSRF token mechanism |
+| Auth rate limits | Login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
 | Workspace/RBAC/projects/tasks | Multi-tenant collaboration domains | PLANNED |
 | Socket.IO | Authorized real-time delivery | PLANNED |
 | Frontend product UI | Router, auth UI, dashboards and API integration | PLANNED; current app is a starter |
@@ -76,7 +78,7 @@ backend/src/database/     Mongoose connection
 backend/src/middleware/   auth and error middleware
 backend/src/modules/      auth, health, and user model
 backend/src/utils/        JWT and refresh-token hash helpers
-backend/tests/integration/ MongoDB transaction and auth rotation tests
+backend/tests/integration/ MongoDB transaction, auth HTTP/service and rate-limit tests
 frontend/src/              starter app plus scaffolding
 docs/                      canonical product and engineering docs
 ```
@@ -105,7 +107,7 @@ For Atlas, create a cluster, a database user with only the required application 
 Available scripts are `npm run dev` and `npm start`. There is no `test` script. The DB-backed tests can be run with Node's test runner from `backend/`, after configuring a **dedicated disposable test database** in `MONGO_URI`:
 
 ```powershell
-node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js
+node --test tests/integration/transaction.test.js tests/integration/auth-rotation.test.js tests/integration/auth-register-login.test.js tests/integration/auth-logout.test.js tests/integration/auth-logout.http.test.js tests/integration/rate-limit.test.js
 ```
 
 The transaction test uses the database named by the URI; never point it at production or shared data. See [Testing Strategy](docs/09_TESTING_STRATEGY.md).
@@ -150,7 +152,7 @@ All current paths are mounted beneath `/api/v1`.
 | `POST /api/v1/auth/logout` | Refresh cookie optional | Attempts single-session revocation; clears cookie |
 | `GET /api/v1/auth/me` | Bearer access token | Returns current active user's profile DTO |
 
-See [API Documentation](docs/07_API_DOCUMENTATION.md) for exact requests, responses, statuses and limitations. JWT/session support does not yet include CSRF or Origin protection, rate limiting, logout-all-devices, or immediate access-token revocation.
+Register/login/refresh/logout also require `Origin` matching `new URL(CLIENT_URL).origin`. Login, registration and refresh use in-memory IP-based rate limits; health, logout and `/auth/me` do not. The app does not configure production proxy trust or shared rate-limit storage. See [API Documentation](docs/07_API_DOCUMENTATION.md) for exact contracts. A CSRF token mechanism, logout-all-devices, immediate access-token revocation and workspace/resource authorization are not implemented.
 
 ## Documentation
 

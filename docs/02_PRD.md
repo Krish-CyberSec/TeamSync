@@ -3,6 +3,8 @@
 **Status:** BASELINE FROZEN — Release 1  
 **Approved:** 2026-11-13
 
+This document defines approved product requirements and is not an implementation inventory. Current code status is tracked in the [feature roadmap](08_FEATURE_ROADMAP.md).
+
 ## Product summary
 TeamSync is a multi-workspace collaboration and personal productivity web application. One account supports personal productivity and collaboration across multiple workspaces.
 

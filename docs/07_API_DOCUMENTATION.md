@@ -1,7 +1,7 @@
 # API Documentation
 
 **Base path:** `/api/v1`
-**Status:** Implemented routes verified against `backend/src/app.js` and auth/health routers (2026-11-14)
+**Status:** Implemented routes and auth middleware verified against source (2026-11-15)
 
 ## Contents
 
@@ -17,7 +17,9 @@
 
 ## Conventions
 
-Requests and responses use JSON except the refresh token, which is carried only by a cookie. There is no global authentication middleware: auth is applied only to `GET /auth/me`; refresh/logout operate on the refresh cookie.
+Requests and responses use JSON except the refresh token, which is carried only by a cookie. There is no global authentication middleware: Bearer authentication is applied only to `GET /auth/me`; refresh/logout operate on the refresh cookie. Registration, login, refresh and logout also require a trusted `Origin`. CORS is configured with `CLIENT_URL` and credentials.
+
+For these four auth POST routes, the accepted Origin is `new URL(CLIENT_URL).origin`. A missing or non-matching `Origin` returns HTTP 403. This check is a CSRF defense, not authentication; CORS alone is not a CSRF defense. No CSRF token is implemented.
 
 Success responses use:
 
@@ -41,7 +43,19 @@ Error responses from the centralized handler use:
 }
 ```
 
-`errors` is included for Zod validation failures. The error handler maps Zod and Mongoose validation errors to 400, duplicate-key errors to 409, and hides 5xx messages when `NODE_ENV=production`. The authentication middleware returns its own 401/403 JSON bodies.
+`errors` is included for Zod validation failures. The central error handler maps Zod and Mongoose validation errors to 400, duplicate-key errors to 409, and masks 5xx response messages when `NODE_ENV=production` (the current handler still logs the full error object). Authentication, Origin and rate-limit middleware/controllers also return JSON error bodies with `success: false` and `message`.
+
+### Rate limits
+
+The configured limits are IP-based and use `express-rate-limit`'s default in-memory store. Standard rate-limit headers are enabled and legacy headers are disabled.
+
+| Route | Limit | Rejection |
+|---|---:|---|
+| `POST /api/v1/auth/login` | 5 per 15 minutes | 429, `Too many login attempts. Please try again later.` |
+| `POST /api/v1/auth/register` | 5 per hour | 429, `Too many registration attempts. Please try again later.` |
+| `POST /api/v1/auth/refresh` | 30 per 15 minutes | 429, `Too many refresh requests. Please try again later.` |
+
+Logout, `/auth/me`, and health have no configured limiter. In-memory counters reset when the process restarts and are not shared across backend instances. The application does not configure Express `trust proxy`; deployments behind a reverse proxy must review and explicitly configure trusted proxy hops before relying on client IP rate limits. The auth registration/login integration test sets `trust proxy` to `loopback` for test IPs; that is test-only.
 
 ## Refresh cookie
 
@@ -56,11 +70,11 @@ Login and refresh set a cookie named `refreshToken` with:
 | `Max-Age` | Seven days |
 | `Domain` | Not explicitly set |
 
-The cookie is not returned in JSON. The refresh route requires the browser/client to send it. CSRF/Origin protections are not implemented; `SameSite=Lax` and CORS are not substitutes for explicit CSRF protection.
+The cookie is not returned in JSON. The refresh route requires the browser/client to send it. The four auth POST endpoints require the trusted `Origin` described above. Origin validation and `SameSite=Lax` are CSRF defenses, but no CSRF token is implemented; CORS alone is not CSRF protection and the current controls should not be presented as a complete CSRF guarantee.
 
 ## `GET /api/v1/health`
 
-**Authentication:** None. **Cookie:** Not required.
+**Authentication:** None. **Origin:** Not required. **Rate limit:** None. **Cookie:** Not required.
 
 **Request body:** None.
 
@@ -75,7 +89,9 @@ The cookie is not returned in JSON. The refresh route requires the browser/clien
 
 ## `POST /api/v1/auth/register`
 
-**Authentication:** None. **Cookie:** Not required.
+**Authentication:** None. **Origin:** Must match the configured trusted Origin. **Rate limit:** 5 requests per IP per hour. **Cookie:** Not required.
+
+Send `Origin: <new URL(CLIENT_URL).origin>` and `Content-Type: application/json`.
 
 **Request body:** Strict object; unknown fields are rejected.
 
@@ -119,13 +135,17 @@ The DTO does not include `passwordHash`. Registration does not send email verifi
 |---:|---|
 | 400 | Zod validation failure; response includes field issues |
 | 409 | Existing email detected by service, or Mongo duplicate-key error |
+| 403 | Origin is missing or does not match the configured trusted Origin |
+| 429 | Registration rate limit exceeded |
 | 500 | Unexpected persistence/server error |
 
 The service checks for an existing email before insert; the User model declares a unique email index as a concurrent-insert backstop, assuming the index exists in the database.
 
 ## `POST /api/v1/auth/login`
 
-**Authentication:** None. **Cookie:** Not required in request; response sets `refreshToken`.
+**Authentication:** None. **Origin:** Must match the configured trusted Origin. **Rate limit:** 5 requests per IP per 15 minutes. **Cookie:** Not required in request; response sets `refreshToken`.
+
+Send `Origin: <new URL(CLIENT_URL).origin>` and `Content-Type: application/json`.
 
 **Request body:** Strict object; unknown fields are rejected.
 
@@ -168,13 +188,17 @@ The client is expected to keep the access token in memory; do not persist it in 
 | 400 | Zod validation failure |
 | 401 | Unknown email or incorrect password; generic message |
 | 403 | Account exists but is not active; `"Account is unavailable"` |
+| 403 | Origin is missing or does not match the configured trusted Origin |
+| 429 | Login rate limit exceeded |
 | 500 | Unexpected database/server error |
 
 The distinct 403 account-status response can disclose account state; consider enumeration risk during security hardening.
 
 ## `POST /api/v1/auth/refresh`
 
-**Authentication:** No Bearer token. **Cookie:** Valid `refreshToken` cookie required.
+**Authentication:** No Bearer token. **Origin:** Must match the configured trusted Origin. **Rate limit:** 30 requests per IP per 15 minutes. **Cookie:** Valid `refreshToken` cookie required.
+
+**Request headers:** `Origin: <new URL(CLIENT_URL).origin>` and a browser/client cookie containing `refreshToken`.
 
 **Request body:** None.
 
@@ -202,13 +226,17 @@ The distinct 403 account-status response can disclose account state; consider en
 |---:|---|
 | 401 | Missing, invalid, expired or reused refresh token/session |
 | 403 | User is missing or not active; active token family is revoked by the service |
+| 403 | Origin is missing or does not match the configured trusted Origin |
+| 429 | Refresh rate limit exceeded |
 | 500 | MongoDB/transaction or unexpected server failure |
 
 The session expiry is checked in application code. The TTL index is asynchronous cleanup, not authorization. A MongoDB replica set or sharded deployment is required for transactions.
 
 ## `POST /api/v1/auth/logout`
 
-**Authentication:** No Bearer token. **Cookie:** Optional `refreshToken`.
+**Authentication:** No Bearer token. **Origin:** Must match the configured trusted Origin. **Rate limit:** None. **Cookie:** Optional `refreshToken`.
+
+**Request headers:** `Origin: <new URL(CLIENT_URL).origin>`; cookie may be omitted.
 
 **Request body:** None.
 
@@ -228,13 +256,14 @@ The service verifies a provided refresh JWT and conditionally revokes only the m
 | Status | Meaning |
 |---:|---|
 | 200 | Cookie cleared; session revoked if a valid matching active session was found |
+| 403 | Origin is missing or does not match the configured trusted Origin |
 | 500 | Database failure while attempting revocation; controller forwards error before clearing the cookie |
 
 Logout does not invalidate already-issued access JWTs. They remain usable until expiry because access-token authentication does not consult the Session collection.
 
 ## `GET /api/v1/auth/me`
 
-**Authentication:** `Authorization: Bearer <access-jwt>`. **Cookie:** Not required.
+**Authentication:** `Authorization: Bearer <access-jwt>`. **Origin:** Not required. **Rate limit:** None. **Cookie:** Not required.
 
 **Success — 200**
 

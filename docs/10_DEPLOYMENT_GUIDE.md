@@ -60,18 +60,20 @@ These are the scripts declared in `frontend/package.json`. The frontend is a sta
 ## Operational and production notes
 
 - Refresh cookies currently set `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth`, seven-day max-age, and `Secure` only when `NODE_ENV=production`; no `Domain` is configured. Test cookie behavior behind the real TLS proxy and frontend/API topology.
-- CORS allows `CLIENT_URL` with credentials, but there is no explicit CSRF token or Origin validation. Do not assume CORS or SameSite alone completes CSRF defense.
+- CORS allows `CLIENT_URL` with credentials. Registration, login, refresh and logout also reject missing or mismatched `Origin` headers using `new URL(CLIENT_URL).origin`; `/auth/me` does not use this middleware. This Origin check and `SameSite=Lax` are CSRF defenses, not authentication, and there is no CSRF token mechanism. CORS alone is not CSRF protection.
 - Access JWTs expire after 15 minutes; refresh JWT/session lifetime is seven days. Logout revokes the matching refresh session only; a previously issued access JWT may remain usable until expiry.
 - Refresh rotation uses MongoDB transactions. The target database must support transactions; verify backup/restore and index creation in an isolated staging deployment.
 - The error middleware hides 5xx response text in production but logs the full Error object. Database/startup paths also log error messages. Review and redact logs before production.
-- Rate limiting, email verification, logout-all-devices, access-token revocation, workspace authorization and monitoring/error tracking are not implemented.
+- `express-rate-limit` limits login to 5/IP/15 minutes, registration to 5/IP/hour, and refresh to 30/IP/15 minutes; logout and `/auth/me` have no configured limit. It uses the default in-memory store, so counters reset on restart and are not shared across instances. Standard rate-limit headers are enabled.
+- The app does not set Express `trust proxy`. If deployed behind a proxy/load balancer, configure only the known proxy hops before trusting forwarded client IPs; incorrect proxy trust can undermine IP-based limits. The `loopback` trust setting appears in one integration test only, not the server configuration.
+- Email verification, logout-all-devices, access-token revocation, workspace authorization and monitoring/error tracking are not implemented.
 
 ### Production readiness checklist
 
-- Configure HTTPS, trusted origins, exact CORS, CSRF/Origin controls and cookie attributes.
+- Configure HTTPS, exact CORS and trusted origins; validate Origin middleware behavior and cookie attributes with the deployed frontend/API topology.
 - Provision secret-manager values and verify both JWT secrets are sufficiently strong and distinct.
 - Restrict MongoDB network/database access; verify transaction support and indexes.
 - Redact logs and confirm errors never expose tokens, credentials or connection details.
-- Add rate limits, monitoring, alerts and error tracking.
+- Configure an appropriate shared rate-limit store and trusted-proxy policy for multi-instance deployment; verify monitoring, alerts and error tracking.
 - Test isolated backup restore, session cleanup, deployment rollback and end-to-end flows.
 - Complete security review before production; the current foundation is not production-ready.

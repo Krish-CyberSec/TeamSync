@@ -2,6 +2,8 @@
 
 **Status:** BASELINE FROZEN — Release 1 (2026-11-13)
 
+These are approved target requirements, not claims that each behavior exists in the current code. See the [feature roadmap](08_FEATURE_ROADMAP.md) for implementation status.
+
 ## Functional requirements
 - FR-AUTH-001: Register using valid name, email and password; normalize and uniquely constrain email.
 - FR-AUTH-002: Require email verification before treating an email as trusted.

@@ -1,5 +1,7 @@
 # UI/UX Guidelines
 
+These guidelines describe the intended product experience, not a claim that the screens or components are implemented. The current frontend remains a starter; implementation status is tracked in the [feature roadmap](08_FEATURE_ROADMAP.md).
+
 ## Direction
 Create a distinctive TeamSync SaaS identity; use familiar productivity conventions without cloning another product.
 

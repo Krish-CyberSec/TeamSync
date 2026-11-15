@@ -20,12 +20,14 @@ backend/src/
   database/connection.js         Mongoose connection
   middleware/auth.middleware.js  Bearer access-token authentication
   middleware/error.middleware.js centralized JSON error mapping
+  middleware/origin.middleware.js exact trusted-Origin check for auth POST routes
+  middleware/rate-limit.middleware.js in-memory auth endpoint limiters
   modules/auth/                  routes, controller, schemas, services, Session
   modules/health/                health route/controller
   modules/users/                  User model
   utils/token.js                 HS256 JWT helpers
   utils/token-hash.js            SHA-256 refresh-token digest
-backend/tests/integration/       transaction and refresh rotation tests
+backend/tests/integration/       six transaction, auth service/HTTP and rate-limit test files
 frontend/src/                    React/Vite starter and scaffold
 docs/                            canonical product and engineering docs
 ```
@@ -37,16 +39,18 @@ docs/                            canonical product and engineering docs
 - Registration hashes passwords with bcrypt cost 12 and returns a safe DTO. Login checks status/password, creates a Session, returns an access JWT, and sets a refresh cookie.
 - Session stores user, family ID, SHA-256 token hash, expiry/revocation/replacement/last-use metadata and timestamps. Rotation checks token/session/user status and conditionally replaces sessions inside a MongoDB transaction; matching replay revokes active sessions in the family.
 - Logout attempts to revoke the matching current refresh session and clears the refresh cookie. `GET /auth/me` verifies Bearer access JWT and reloads the active user.
+- Registration, login, refresh and logout require an `Origin` matching `new URL(CLIENT_URL).origin`; missing or different origins receive 403. This is a CSRF defense, not authentication, and there is no CSRF token mechanism.
+- Login is limited to 5 requests per IP per 15 minutes, registration to 5 per IP per hour, and refresh to 30 per IP per 15 minutes. `express-rate-limit` uses its default in-memory store; no shared store or production proxy trust setting is configured. Logout and `/auth/me` have no configured limiter.
 - Active API: `GET /api/v1/health`, `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`.
-- `node --check` passed for 16 backend source files and two integration-test files. Current smoke check: health 200; invalid registration/login 400; refresh without cookie 401; logout without cookie 200; `/me` without Bearer 401. No DB-backed auth operation was exercised by that smoke check.
+- A prior 2026-11-14 check reported `node --check` passing for 16 backend source files and two integration-test files. That predates the additional middleware and HTTP tests below and is not a validation result for the current full tree. The 2026-11-14 smoke check reported health 200; invalid registration/login 400; refresh without cookie 401; logout without cookie 200; `/me` without Bearer 401. No DB-backed auth operation was exercised by that smoke check.
 
 ## Test evidence and limitations
 
-Two MongoDB `node:test` integration files exist. The transaction suite checks commit/rollback. The auth suite checks valid rotation, invalid JWT, replay, concurrency, suspended user and expired DB session. The tests were not run during this documentation task because they perform database writes and require a disposable replica-set DB. No `test` script exists. The transaction suite uses the DB selected by `MONGO_URI`; never target production/shared data.
+Six `node:test` integration files exist: transaction commit/rollback; auth rotation; registration/login HTTP; logout service; logout HTTP; and rate-limit HTTP. Their verified assertions are catalogued in [Testing Strategy](docs/09_TESTING_STRATEGY.md). The MongoDB-backed tests were not run for this documentation update because they write data and require a disposable replica-set database. No `test` script exists. Auth suites select `teamsync_test`; the transaction suite uses the database selected by `MONGO_URI`. Never target production/shared data.
 
 The project owner reports manual Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, bcrypt hash verification, login 200 and invalid credentials 401. These are owner-reported manual checks, not automated coverage and were not repeated here.
 
-MongoDB startup/index creation has not been independently verified. The frontend remains a starter. Auth limitations: no CSRF/Origin controls, auth rate limits, email verification, logout-all-devices, immediate access-token revocation or workspace/resource authorization. The error handler logs full 5xx Error objects; production log redaction needs review. This is not production-ready.
+MongoDB startup/index creation has not been independently verified. The frontend remains a starter. Auth limitations: no CSRF token mechanism, shared rate-limit store, explicit production proxy trust configuration, email verification, logout-all-devices, or immediate access-token revocation; workspace/resource authorization is also not implemented. Origin validation and SameSite=Lax provide defenses but do not by themselves establish a complete CSRF strategy. The error handler logs full 5xx Error objects; production log redaction needs review. This is not production-ready.
 
 ## Important decisions
 
@@ -59,8 +63,8 @@ MongoDB startup/index creation has not been independently verified. The frontend
 
 ## Next milestone
 
-Run the existing transaction/auth integration tests against an isolated replica-set database and add HTTP endpoint/cookie/logout/auth-middleware tests. Complete CSRF/Origin controls, auth rate limiting, logout-all-devices and access-token revocation design. Then implement server-side workspace authorization before protected workspace/project APIs and connect the frontend to stable API contracts.
+Run all six existing integration files against an isolated replica-set database, add `/auth/me` and remaining Origin/error-path coverage, and review production proxy and shared rate-limit storage requirements. Continue auth hardening for logout-all-devices and access-token revocation. Then implement server-side workspace authorization before protected workspace/project APIs and connect the frontend to stable API contracts.
 
 ## Last updated
 
-2026-11-14 — Auth/session routes, transaction tests, onboarding and documentation status synchronized to current workspace source.
+2026-11-15 — Auth/session routes, Origin checks, rate limits, integration-test inventory, onboarding and documentation status synchronized to current workspace source.
