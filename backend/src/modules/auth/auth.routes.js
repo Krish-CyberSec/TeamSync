@@ -47,6 +47,6 @@ router.post(
   logout
 );
 
-router.get("/me", authenticate, getCurrentUser);
+router.get("/me", refreshLimiter, authenticate, getCurrentUser);
 
 export default router;
