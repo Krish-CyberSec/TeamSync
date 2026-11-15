@@ -11,6 +11,7 @@ import User from "../../src/modules/users/user.model.js";
 import Session from "../../src/modules/auth/session.model.js";
 
 import { createUserSession } from "../../src/modules/auth/auth.service.js";
+import { generateAccessToken } from "../../src/utils/token.js";
 
 let server;
 let baseUrl;
@@ -68,6 +69,24 @@ const createTestUser = async () => {
     return user;
 };
 
+const getMe = async (accessToken) => {
+    return fetch(`${baseUrl}/api/v1/auth/me`, {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
+    });
+};
+
+const logout = async (refreshToken) => {
+    return fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: env.CLIENT_URL,
+            Cookie: `refreshToken=${refreshToken}`,
+        },
+    });
+};
+
 const assertCookieCleared = (response) => {
     const cookies = response.headers.getSetCookie();
 
@@ -76,7 +95,6 @@ const assertCookieCleared = (response) => {
     );
 
     assert.ok(refreshCookie, "Refresh cookie should be present");
-
     assert.match(refreshCookie, /HttpOnly/i);
     assert.match(refreshCookie, /Path=\/api\/v1\/auth/i);
     assert.match(refreshCookie, /SameSite=Lax/i);
@@ -87,27 +105,75 @@ test("HTTP logout revokes session and clears refresh cookie", async () => {
     const user = await createTestUser();
     const original = await createUserSession(user._id);
 
-    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-        method: "POST",
-        headers: {
-            Origin: env.CLIENT_URL,
-            Cookie: `refreshToken=${original.refreshToken}`,
-        },
-    });
-
+    const response = await logout(original.refreshToken);
     const body = await response.json();
 
-    const storedSession = await Session.findById(
-        original.session._id
-    );
+    const storedSession = await Session.findById(original.session._id);
 
     assert.equal(response.status, 200);
     assert.equal(body.success, true);
     assert.equal(body.message, "Logout successful");
 
     assert.ok(storedSession.revokedAt);
-
     assertCookieCleared(response);
+});
+
+test("HTTP logout immediately invalidates the device access token", async () => {
+    const user = await createTestUser();
+    const { refreshToken, session } = await createUserSession(user._id);
+
+    const accessToken = generateAccessToken(user._id, session._id);
+
+    const beforeLogout = await getMe(accessToken);
+    assert.equal(beforeLogout.status, 200);
+
+    const logoutResponse = await logout(refreshToken);
+    assert.equal(logoutResponse.status, 200);
+
+    const afterLogout = await getMe(accessToken);
+    const body = await afterLogout.json();
+
+    assert.equal(afterLogout.status, 401);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Session is invalid or revoked");
+});
+
+test("logging out one device does not invalidate another device", async () => {
+    const user = await createTestUser();
+
+    const deviceA = await createUserSession(user._id);
+    const deviceB = await createUserSession(user._id);
+
+    const accessTokenA = generateAccessToken(
+        user._id,
+        deviceA.session._id
+    );
+
+    const accessTokenB = generateAccessToken(
+        user._id,
+        deviceB.session._id
+    );
+
+    const deviceABefore = await getMe(accessTokenA);
+    const deviceBBefore = await getMe(accessTokenB);
+
+    assert.equal(deviceABefore.status, 200);
+    assert.equal(deviceBBefore.status, 200);
+
+    const logoutResponse = await logout(deviceA.refreshToken);
+    assert.equal(logoutResponse.status, 200);
+
+    const deviceAAfter = await getMe(accessTokenA);
+    const deviceBAfter = await getMe(accessTokenB);
+
+    assert.equal(deviceAAfter.status, 401);
+    assert.equal(deviceBAfter.status, 200);
+
+    const sessionA = await Session.findById(deviceA.session._id);
+    const sessionB = await Session.findById(deviceB.session._id);
+
+    assert.ok(sessionA.revokedAt);
+    assert.equal(sessionB.revokedAt, null);
 });
 
 test("HTTP logout succeeds when refresh cookie is missing", async () => {
@@ -145,30 +211,29 @@ test("HTTP logout succeeds with an invalid refresh cookie", async () => {
     assertCookieCleared(response);
 });
 
-
 test("HTTP logout rejects a request with a malicious Origin", async () => {
-  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-    headers: {
-      Origin: "https://malicious.example",
-    },
-  });
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: {
+            Origin: "https://malicious.example",
+        },
+    });
 
-  const body = await response.json();
+    const body = await response.json();
 
-  assert.equal(response.status, 403);
-  assert.equal(body.success, false);
-  assert.equal(body.message, "Request origin is not allowed");
+    assert.equal(response.status, 403);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Request origin is not allowed");
 });
 
 test("HTTP logout rejects a request with a missing Origin", async () => {
-  const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
-    method: "POST",
-  });
+    const response = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+        method: "POST",
+    });
 
-  const body = await response.json();
+    const body = await response.json();
 
-  assert.equal(response.status, 403);
-  assert.equal(body.success, false);
-  assert.equal(body.message, "Request origin is not allowed");
+    assert.equal(response.status, 403);
+    assert.equal(body.success, false);
+    assert.equal(body.message, "Request origin is not allowed");
 });
