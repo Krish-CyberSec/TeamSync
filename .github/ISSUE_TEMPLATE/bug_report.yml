@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible defect in the current repository.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before submitting, search existing issues for duplicates. Do not include secrets, credentials, private URLs, production data, or personal information.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug summary
+      description: What is broken?
+      placeholder: Describe the observed problem.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest safe, reproducible sequence.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment information
+      description: Include relevant OS, browser, Node.js, npm, or MongoDB version information. Omit private hosts and identifiers.
+      placeholder: "OS/browser/runtime versions:"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant logs or screenshots
+      description: Redact secrets, tokens, credentials, private URLs, user data, and personal information before attaching.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: sensitive-data-check
+    attributes:
+      label: Sensitive information check
+      options:
+        - label: I checked this report and removed secrets, credentials, private URLs, production data, and personal information.
+          required: true

@@ -15,6 +15,7 @@ TeamSync is a collaboration and personal-productivity platform for individuals a
 - [Local setup](#local-setup)
 - [Implemented API](#implemented-api)
 - [Documentation](#documentation)
+- [Community and accessibility](#community-and-accessibility)
 - [Intellectual Property and Licensing](#intellectual-property-and-licensing)
 
 ## Product and status
@@ -28,10 +29,10 @@ Core product differentiators are one account for personal and team work, indepen
 | Backend bootstrap | Express ES modules, config validation, MongoDB connection lifecycle | IMPLEMENTED; live DB startup not verified here |
 | Health | Public `GET /api/v1/health` | COMPLETED; HTTP smoke check passed |
 | Registration | Strict validation, bcrypt-backed persistence, safe DTO, trusted-Origin and IP limit | IMPLEMENTED; HTTP integration coverage and owner-reported manual checks |
-| Login | Credential check, server-side refresh session, session-bound access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; DB-backed integration tests exist but were not run here |
-| Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; integration tests exist but were not run here |
-| Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; service and HTTP tests exist but were not run here |
-| Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; exercised by logout HTTP integration tests (not run here) |
+| Login | Credential check, server-side refresh session, session-bound access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
+| Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
+| Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16; CSRF cookie clear path is a known mismatch |
+| Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
 | CSRF and Origin defenses | Exact `CLIENT_URL` Origin required on auth POST routes; signed double-submit token on refresh/logout | IMPLEMENTED; HMAC-SHA256 token is bound to the refresh token |
 | API/auth rate limits | API 300/15m; login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
 | Workspace creation slice | Workspace/member models, validation, transactional service and controller | PARTIAL; no route, integration test, or workspace authorization |
@@ -164,6 +165,10 @@ The complete backend integration command, `node --test tests/integration/*.test.
 ## Documentation
 
 The [documentation index](docs/README.md) links product requirements, architecture, schema, API contracts, security, testing, deployment, ADRs and roadmap. The [Developer Guide](docs/14_DEVELOPER_GUIDE.md) describes the current implementation patterns and contribution workflow.
+
+## Community and accessibility
+
+See the [Code of Conduct](CODE_OF_CONDUCT.md), [Contributing Guide](CONTRIBUTING.md), [Security Policy](SECURITY.md), and [Accessibility Statement](ACCESSIBILITY.md). Bug reports and feature requests can be opened through the repository's [issue templates](https://github.com/Krish-CyberSec/TeamSync/issues/new/choose); report security vulnerabilities only through the private process in [SECURITY.md](SECURITY.md), not a public issue. The accessibility statement describes current limitations and goals; no WCAG audit or conformance claim has been made.
 
 ## Intellectual Property and Licensing
 

@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a product or engineering improvement.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        TeamSync is under active development. A request is not a commitment to implement a feature. Do not include secrets, credentials, private URLs, production data, or personal information.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What user need or problem would this address?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you would like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: benefits
+    attributes:
+      label: Expected benefits
+      description: Who benefits, and how?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe alternatives or workarounds you considered.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add safe, relevant context. Avoid personal or confidential information.
+    validations:
+      required: false

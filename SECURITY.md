@@ -2,6 +2,10 @@
 
 **Document status:** Initial draft. The reporting address was supplied by the project owner; mailbox monitoring has not been independently verified. Confirm that it is monitored before relying on this policy. Review this policy with qualified counsel in India before formal commercial use.
 
+## Supported versions
+
+The repository does not define a release cadence, supported-version window, or security-maintenance period. There are no Git tags at the time this policy was reviewed. Until a support policy is published, reports are most useful when they identify the latest code on the default `main` branch and, if relevant, the exact version or commit being used. No support or remediation commitment for older or deployed builds is implied.
+
 ## Reporting a vulnerability
 
 Please report suspected security vulnerabilities privately to **k.singh.codebase@gmail.com**. Do not post exploit details, credentials, personal information, or unpatched vulnerabilities in public issues, discussions, or pull requests.
@@ -31,7 +35,24 @@ Once the supplied address is confirmed as monitored, the intended process is:
 3. The maintainer coordinates a fix or mitigation and a disclosure plan with the reporter where feasible.
 4. The maintainer communicates when the issue is resolved or when further action is not planned.
 
-These are process expectations, not guaranteed response times. Although an address has been supplied, this workspace cannot verify that it is monitored; confirm monitoring before relying on it as a security-reporting channel.
+These are process expectations, not guaranteed response times. Although an address has been supplied, this workspace cannot verify that it is monitored; confirm monitoring before relying on it as a security-reporting channel. If you cannot confirm a private reporting channel, do not publish exploit details or sensitive information in a public issue; wait for the maintainer to provide a verified private contact method.
+
+## Implemented security controls and limitations
+
+The following controls are present in the current backend source. Their presence does not constitute a security audit or production-readiness claim:
+
+- Zod request/configuration validation and bcrypt password hashing.
+- HS256 JWT access and refresh tokens with separate configured secrets; access tokens are bound to a MongoDB session, checked during Bearer authentication, and short-lived.
+- Hashed refresh-token storage, server-side rotation, replay-family revocation, and single-session logout.
+- HttpOnly refresh-token cookie and a signed double-submit CSRF token on refresh/logout. The CSRF token uses HMAC-SHA256, is bound to the refresh token, and is compared with a timing-safe operation.
+- Exact trusted-Origin checks on registration, login, refresh, and logout.
+- Helmet, configured CORS, and general plus route-specific `express-rate-limit` limits.
+
+Known limitations include process-local in-memory rate-limit stores, no configured production proxy trust, no implemented workspace/resource RBAC or tenant authorization, no logout-all-devices, and no independent security audit. The CSRF cookie is issued at `Path=/` but logout currently clears it at `/api/v1/auth`; browser removal may therefore fail. See [Security and Access Model](docs/13_SECURITY_AND_ACCESS.md) for implementation details.
+
+The current backend integration suite command is `node --test tests/integration/*.test.js`. It passed 47 tests on 2026-11-16 against the configured disposable test database. This test result is not a security certification.
+
+For expected community behavior and conduct reporting, see [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Conduct reports should not include vulnerability details.
 
 ## GitHub repository security recommendations
 
