@@ -5,7 +5,7 @@
 
 ## Test setup
 
-The backend uses Node.js built-in `node:test` and `node:assert/strict`. Nine test files exist under `backend/tests/integration/`. `backend/package.json` does not define a `test` script or a separate test runner.
+The backend uses Node.js built-in `node:test` and `node:assert/strict`. Thirteen test files exist under `backend/tests/integration/`: nine auth/security/transaction files and four workspace files. `backend/package.json` does not define a `test` script or a separate test runner.
 
 The tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` and `CSRF_SECRET` values (at least 32 characters each), and an isolated disposable MongoDB replica set or sharded deployment for database-backed files. The test files import the environment validator, so even CSRF and rate-limit-only tests need these secret variables. Do not expose local secret values.
 
@@ -22,8 +22,12 @@ The tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRE
 | `tests/integration/csrf-token.test.js` | Unit checks valid refresh-token binding, different refresh-token rejection, tampered/malformed/missing tokens and expiry after seven days. |
 | `tests/integration/rate-limit.test.js` | HTTP 429 on login request 6, registration request 6 and refresh request 31; checks each response message. It does not assert rate-limit headers. |
 | `tests/integration/api-rate-limit.test.js` | HTTP 404 responses reach the app through request 300; request 301 receives the general API limiter's 429 response and message. It does not assert rate-limit headers. |
+| `tests/integration/workspace-creation.test.js` | Authenticated workspace creation, creator OWNER membership, invalid/unknown create fields and unauthenticated rejection; listing is scoped to the caller's memberships and returns role information. |
+| `tests/integration/workspace-details.test.js` | Workspace member can retrieve details; non-member receives 404; invalid ObjectId receives 400; unauthenticated request is rejected. |
+| `tests/integration/workspace-update.test.js` | OWNER and ADMIN can update; MANAGER and MEMBER are forbidden; non-member gets 404; invalid ObjectId, empty body, unexpected field and unauthenticated requests are rejected. |
+| `tests/integration/workspace-deletion.test.js` | OWNER soft deletion, role denial for other members, non-member/unauthenticated/invalid-ID errors, deleted-workspace exclusion from list/details, update rejection and repeated deletion 404. |
 
-These test descriptions reflect assertions in source. The complete integration suite was run on 2026-11-16 with the configured disposable replica-set test database: 47 tests passed, zero failed. This verifies the current suite in that environment; it does not establish production readiness. No workspace model/service/controller tests, strict CSRF-cookie clearing-path assertion, rate-limit header assertions, or explicit database-failure test for logout exists.
+These descriptions reflect assertions in source. The auth/security suite's earlier run on 2026-11-16 passed 47 tests across the then-existing nine files; that result predates the four workspace files and is not a result for the current 13-file suite. The developer reports the complete workspace regression suite passed, but the command/output was not available for independent verification in this documentation task. Neither result establishes production readiness.
 
 ## Running tests safely
 
@@ -43,13 +47,13 @@ node --test tests/integration/rate-limit.test.js
 node --test tests/integration/api-rate-limit.test.js
 ```
 
-Run all nine files:
+Run all thirteen files:
 
 ```powershell
 node --test tests/integration/*.test.js
 ```
 
-The complete command above passed 47 tests on 2026-11-16. Before running it elsewhere, verify that `MONGO_URI` points to a disposable replica-set-capable database: auth suites use the `teamsync_test` database, while `transaction.test.js` uses the database named in `MONGO_URI` and leaves its probe collection in place. Never point it at production or shared data. MongoDB transactions require a replica set or sharded deployment; a standalone server is insufficient.
+The complete command above has not been rerun against the current 13-file inventory for this documentation update. The earlier 47-test result covered the nine files that existed at that time. Before running it, verify that `MONGO_URI` points to a disposable replica-set-capable database: auth suites use the `teamsync_test` database, while `transaction.test.js` uses the database named in `MONGO_URI` and leaves its probe collection in place. Workspace tests also write/clean test records. Never point it at production or shared data. MongoDB transactions require a replica set or sharded deployment; a standalone server is insufficient.
 
 ## Coverage gaps
 
@@ -62,14 +66,14 @@ The complete command above passed 47 tests on 2026-11-16. Before running it else
 - Registration duplicate-key race and live unique-index provisioning.
 - JWT expiry, wrong issuer/type/algorithm/signature and mismatched claims beyond tested cases.
 - TTL cleanup timing/index creation and refresh-rotation rollback/failure behavior.
-- Workspace isolation, role boundaries and project membership (not implemented).
-- Workspace transaction rollback, duplicate-slug behavior, controller validation and request authorization (workspace files have no tests or registered route).
+- Workspace transaction rollback and duplicate-slug API behavior are not verified by the workspace integration files.
+- Workspace route tests cover role and membership boundaries, but cross-workspace project/resource isolation and all member-administration workflows remain unimplemented.
 
 ## Quality gates
 
 - Add focused positive and negative tests alongside behavior changes.
 - Exercise HTTP contracts as well as service/model logic for auth changes.
 - Run database tests only with a dedicated disposable replica-set database; verify the selected database and cleanup first.
-- Add cross-workspace isolation and privilege-escalation tests before protected workspace/project APIs ship.
+- Add cross-workspace isolation and privilege-escalation tests before protected project/resource APIs ship or workspace member-administration endpoints are added.
 - Run frontend lint/build after frontend changes; scripts are defined in `frontend/package.json`.
 - Never claim tests passed unless the exact command ran successfully.

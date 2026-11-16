@@ -4,6 +4,8 @@
 
 These are approved target requirements, not claims that each behavior exists in the current code. See the [feature roadmap](08_FEATURE_ROADMAP.md) for implementation status.
 
+**Implementation note (2026-11-16):** The workspace API currently implements FR-WS-001, the membership-scoped read behavior in FR-WS-002, and soft deletion in FR-WS-003. The current delete endpoint does not implement confirmation, recovery or permanent purge. Invitation and membership-administration requirements remain unimplemented; role restrictions for current routes are documented in the API and roadmap.
+
 ## Functional requirements
 - FR-AUTH-001: Register using valid name, email and password; normalize and uniquely constrain email.
 - FR-AUTH-002: Require email verification before treating an email as trusted.

@@ -22,7 +22,7 @@ TeamSync uses a modular monolith: one backend application with domain modules, a
 |---|---|---|
 | Backend | Node.js ES modules, Express, MongoDB/Mongoose, Zod, bcrypt, jsonwebtoken, dotenv, Helmet, CORS, cookie-parser, express-rate-limit | Socket.IO |
 | Frontend | React/Vite/Tailwind CSS v4 starter; Axios and TanStack Query client instances are scaffolded | React Router, Zustand and Lucide React are declared but unused; no router/provider/store, product UI or API/auth integration |
-| Testing | Node `node:test`, `node:assert/strict`, nine integration files covering transaction, auth HTTP/service, CSRF and rate limits; 47 tests passed on 2026-11-16 | Workspace tests, strict CSRF-cookie clearing-path and rate-limit-header coverage, and broader security/failure paths |
+| Testing | Node `node:test`, `node:assert/strict`; the auth/security integration run passed 47 tests on 2026-11-16; four workspace test files were added afterward and are developer-reported as passing | Current full-suite rerun, workspace rollback/slug-collision and broader failure-path verification |
 
 ## High-level architecture
 
@@ -30,7 +30,7 @@ TeamSync uses a modular monolith: one backend application with domain modules, a
 flowchart LR
   Browser["React/Vite starter"] -->|"REST /api/v1"| App["Express application"]
   App --> MW["CORS · Helmet · JSON · cookies · API limiter"]
-  MW --> Routes["Health and auth routers"]
+  MW --> Routes["Health, auth and workspace routers"]
   Routes --> Controllers["Controllers"]
   Routes -. "auth routes only" .-> Guard["Origin · CSRF · route-specific rate limits"]
   Guard --> Controllers
@@ -38,7 +38,7 @@ flowchart LR
   Services --> Models["Mongoose User, Session, Workspace and WorkspaceMember"]
   Services --> Tokens["JWT and SHA-256 helpers"]
   Models --> DB[("MongoDB")]
-  WorkspaceCode["Workspace service/controller<br/>no registered route"] -.-> Models
+  WorkspaceService["Workspace service"] --> Models
   App -. errors .-> Error["Central error handler"]
 ```
 
@@ -72,29 +72,29 @@ backend/src/
 │   ├── auth/                      routes, controller, schemas, service, Session model
 │   ├── health/                    health route/controller
 │   ├── users/                     User model
-│   └── workspaces/                Workspace/member models, validation, create service and controller; no routes
+│   └── workspaces/                routes, controller, service, validation and models
 └── utils/
     ├── csrf-token.js              HMAC-SHA256 token generation/verification
     ├── token.js                   JWT sign/verify
     └── token-hash.js              SHA-256 refresh-token digest
 ```
 
-Projects, tasks, notifications and chat directories currently contain placeholders. Workspace code implements a limited creation slice but is not exposed through a route.
+Projects, tasks, notifications and chat directories currently contain placeholders. Workspace management routes are active, with authorization limited to membership-based access and the implemented role checks.
 
 ### Module implementation status
 
 | Module | Status | Evidence / limits |
 |---|---|---|
-| Auth | Implemented; covered by current integration suite | Register/login/refresh/logout and `/me` exist; the full nine-file suite passed 47 tests on 2026-11-16. Broader failure paths remain. |
+| Auth | Implemented; covered by auth/security integration suite | Register/login/refresh/logout and `/me` exist; the nine-file auth/security suite passed 47 tests on 2026-11-16, before workspace files were added. Broader failure paths remain. |
 | Health | Implemented | Public health route/controller exist; a prior smoke check returned HTTP 200, but it was not rerun here. |
-| Users | Implemented; covered by current integration suite | User model, bcrypt hook and auth flows exist; registration/hash/DTO behavior is covered, and the full suite passed 47 tests on 2026-11-16. |
-| Workspaces | Partially implemented | Models, create validation, transaction service and controller exist; no routes, integration tests, membership authorization or tenant isolation. |
+| Users | Implemented; covered by auth integration tests | User model, bcrypt hook and auth flows exist; registration/hash/DTO behavior is covered. The earlier nine-file auth/security run passed 47 tests on 2026-11-16, before workspace files were added. |
+| Workspaces | Implemented management slice | Authenticated create/list/details/update/soft-delete routes and membership/role checks exist. Four integration test files cover the feature; developer reports the workspace regression suite passed, but it was not rerun for this documentation update. Member administration, invitations, recovery and project/resource authorization remain unimplemented. |
 | Projects | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Tasks | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Notifications | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Chat | Planned / not started | Placeholder directory only; no model, service, routes or Socket.IO integration. |
-| Database | Implemented but not fully tested | Mongoose connection and User/Session/Workspace/WorkspaceMember schemas exist; live database/index creation and workspace transaction tests were not verified. |
-| Middleware | Implemented; selected paths tested | Auth, errors, Origin/CSRF checks, general API rate limiting and auth-route limits exist; full suite passed 47 tests on 2026-11-16. Rate-limit header behavior and exact CSRF clear-cookie path are not asserted. |
+| Database | Implemented but not fully tested | Mongoose connection and User/Session/Workspace/WorkspaceMember schemas exist; live database/index creation was not verified. |
+| Middleware | Implemented; selected paths tested | Auth, errors, Origin/CSRF checks, general API rate limiting and auth-route limits exist; the earlier nine-file auth/security run passed 47 tests on 2026-11-16. Rate-limit header behavior and exact CSRF clear-cookie path are not asserted. |
 | Frontend | Partially implemented | React/Vite/Tailwind starter plus Axios/Query client instances; no router/provider wiring, product UI, auth flow or API integration. |
 
 ### Responsibilities and rationale
@@ -103,7 +103,7 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 |---|---|---|
 | Routes | Map HTTP method/path to controller; attach auth middleware where required | Keeps routing declarative |
 | Controllers | Parse request schemas, call services, set cookies/statuses, return safe DTOs | Isolates transport-specific behavior |
-| Services | Registration/login, refresh-session decisions, and transactional workspace creation | Keeps business rules out of routes and persistence hooks |
+| Services | Registration/login, refresh-session decisions, and workspace membership/role operations | Keeps business rules out of routes and persistence hooks |
 | Models | Define User, Session, Workspace and WorkspaceMember fields/index declarations | Centralizes persistence constraints |
 | Middleware | Authenticate Bearer access requests; map forwarded errors | Reuses cross-cutting behavior across routes |
 | Origin middleware | Require the configured frontend Origin on auth POST routes | Rejects missing or untrusted browser origins; it is a CSRF defense, not identity verification |
@@ -120,10 +120,10 @@ Actual Express order from `backend/src/app.js`:
 2. Helmet security headers.
 3. JSON body parsing.
 4. `cookie-parser`.
-5. General IP rate limiter on `/api/v1`, then health/auth routers; auth routes apply route-specific rate limiting, trusted-Origin and CSRF checks before controllers.
+5. General IP rate limiter on `/api/v1`, then health/auth/workspace routers; auth routes apply route-specific rate limiting, trusted-Origin and CSRF checks, while workspace creation requires trusted Origin and all workspace routes require Bearer authentication.
 6. Central error handler for errors forwarded with `next(error)`.
 
-The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout additionally require a refresh cookie and valid CSRF cookie/header pair. A general 300-per-15-minute IP limit applies to every `/api/v1` request; login, registration and refresh have stricter route limits. `authenticate` verifies both the JWT and its database session. Workspace controller/service code is not mounted: there is no workspace routes file or active workspace API.
+The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout additionally require a refresh cookie and valid CSRF cookie/header pair. A general 300-per-15-minute IP limit applies to every `/api/v1` request; login, registration and refresh have stricter route limits. `authenticate` verifies both the JWT and its database session. The workspace router is mounted at `/api/v1/workspaces`; every route requires authentication, and create also requires trusted Origin. Workspace services enforce membership-based visibility and OWNER/ADMIN update and OWNER delete restrictions. These are endpoint-specific checks, not complete member-management or project/resource authorization.
 
 ```mermaid
 sequenceDiagram
@@ -177,7 +177,7 @@ flowchart TD
   Revoke --> Clear["Clear refresh and CSRF cookies"]
 ```
 
-The system currently implements this auth/session foundation, Origin validation on the four auth POST routes, signed double-submit CSRF validation on refresh/logout, and in-memory IP rate limits for all API routes plus stricter login/registration/refresh limits. Access-token session checks make session revocation effective immediately on protected requests. It does not implement shared rate-limit storage, explicit production proxy trust, email verification, logout-all-devices or workspace authorization. The logout controller currently clears the CSRF cookie with a path different from the one used when issuing it; see the [security model](13_SECURITY_AND_ACCESS.md). See the [API reference](07_API_DOCUMENTATION.md) for precise behavior and limitations.
+The system currently implements this auth/session foundation, Origin validation on the four auth POST routes, signed double-submit CSRF validation on refresh/logout, and in-memory IP rate limits for all API routes plus stricter login/registration/refresh limits. Access-token session checks make session revocation effective immediately on protected requests. It does not implement shared rate-limit storage, explicit production proxy trust, email verification, logout-all-devices or comprehensive workspace/project/resource authorization. The implemented workspace routes perform membership and role checks. The logout controller currently clears the CSRF cookie with a path different from the one used when issuing it; see the [security model](13_SECURITY_AND_ACCESS.md). See the [API reference](07_API_DOCUMENTATION.md) for precise behavior and limitations.
 
 Every access JWT contains `sid`, the `_id` of the database Session created at login or refresh. On protected requests, authentication verifies the JWT (`exp`, issuer, algorithm and token type), loads an active User, then requires the exact matching Session for that user with `revokedAt: null` and `expiresAt` in the future. JWT expiry (15 minutes) and database-session expiry (seven days) are independent limits: either one can deny access first. A valid JWT signature does not override a revoked, missing or expired database Session. Logout revokes only the supplied session, so its access tokens fail the next protected request while another device's session remains active.
 
@@ -199,10 +199,10 @@ sequenceDiagram
   Note over TX,S: Failure aborts transaction writes
 ```
 
-MongoDB transactions require a replica set or sharded deployment. A dedicated test database is required for integration tests. The full nine-file integration suite passed 47 tests on 2026-11-16 against the configured disposable test database. The transaction test uses the database named in `MONGO_URI`, so a production/shared URI must never be used for tests. The rate-limit tests verify rejection status/message but do not assert headers; the logout test's `Path=/` match is not a strict assertion of the CSRF clear-cookie path.
+MongoDB transactions require a replica set or sharded deployment. A dedicated test database is required for integration tests. The nine-file auth/security integration run passed 47 tests on 2026-11-16 against the configured disposable test database, before four workspace files were added. The developer reports the workspace regression suite passed, but the current 13-file suite was not independently rerun. The transaction test uses the database named in `MONGO_URI`, so a production/shared URI must never be used for tests. The rate-limit tests verify rejection status/message but do not assert headers; the logout test's `Path=/` match is not a strict assertion of the CSRF clear-cookie path.
 
 Conditional session update claims a refresh session once. If a previously revoked token with a matching stored hash is reused, the service revokes all active sessions sharing its `familyId`; the family identifier itself is not changed. The concurrency test expects one rotation to succeed, the competing request to fail, and the token family to end revoked. These integration tests exist but were not run during this documentation update.
 
 ## Product boundaries
 
-The approved R1 modules include auth, users, workspaces, membership, invitations, projects, tasks, comments, notifications, activities, project chat and analytics. Auth, health and user/session persistence have active routes/models; workspace creation has a transactional service/controller/model slice but is not mounted or tested. Workspace role enforcement, invitations, project/task authorization and tenant isolation remain requirements, not implemented access controls. Calendar, attachments and direct/group messaging are deferred to later releases.
+The approved R1 modules include auth, users, workspaces, membership, invitations, projects, tasks, comments, notifications, activities, project chat and analytics. Auth, health, workspace management, and user/session/workspace persistence have active routes/models. Workspace read/update/delete roles are enforced for the implemented workspace endpoints. Member listing/management, invitations, ownership transfer, recovery, project/task authorization and broader tenant isolation remain requirements, not implemented capabilities. Calendar, attachments and direct/group messaging are deferred to later releases.

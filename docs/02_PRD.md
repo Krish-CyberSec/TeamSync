@@ -29,6 +29,8 @@ A user can belong to multiple workspaces and hold a different role in each. Role
 - MANAGER: manage projects for which they have explicit project-level authority.
 - MEMBER: collaborate in projects to which they have access and manage their own personal tasks.
 
+**Implementation note (2026-11-16):** Workspace creation, member-scoped listing/details, OWNER/ADMIN workspace updates, and OWNER-only soft deletion are implemented. The current delete endpoint does not include confirmation, recovery, or permanent purge. Member listing, invitations, membership/role administration, ownership transfer, and project access remain future work; see the [feature roadmap](08_FEATURE_ROADMAP.md).
+
 ## Invitations
 Workspace invitations are email-address-bound, single-use and expire seven days after creation. Generate cryptographically random tokens and store only a secure hash. Authorized administrators can resend or revoke pending invitations. Acceptance validates the invitee identity, token, expiry and pending status; membership creation is atomic and idempotent. Email delivery provider remains an implementation choice.
 

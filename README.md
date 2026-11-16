@@ -20,7 +20,7 @@ TeamSync is a collaboration and personal-productivity platform for individuals a
 
 ## Product and status
 
-The target product includes personal tasks, workspaces, invitations and roles, private projects, Kanban tasks, comments, notifications, project chat and analytics. The current repository is an early backend foundation; the frontend is a Vite starter and most product domains are not implemented.
+The target product includes personal tasks, workspaces, invitations and roles, private projects, Kanban tasks, comments, notifications, project chat and analytics. The backend currently implements authentication/session flows and workspace create/list/details/update/soft-delete endpoints. The frontend is still a Vite starter, and most product domains are not implemented.
 
 Core product differentiators are one account for personal and team work, independent workspaces with workspace-specific roles, and projects that are private by default rather than automatically visible to every workspace member.
 
@@ -29,14 +29,15 @@ Core product differentiators are one account for personal and team work, indepen
 | Backend bootstrap | Express ES modules, config validation, MongoDB connection lifecycle | IMPLEMENTED; live DB startup not verified here |
 | Health | Public `GET /api/v1/health` | COMPLETED; HTTP smoke check passed |
 | Registration | Strict validation, bcrypt-backed persistence, safe DTO, trusted-Origin and IP limit | IMPLEMENTED; HTTP integration coverage and owner-reported manual checks |
-| Login | Credential check, server-side refresh session, session-bound access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
-| Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
-| Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16; CSRF cookie clear path is a known mismatch |
-| Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; full backend suite passed 47 tests on 2026-11-16 |
+| Login | Credential check, server-side refresh session, session-bound access token, HttpOnly cookie, trusted-Origin check and IP limit | IMPLEMENTED; the nine-file auth/security suite passed 47 tests before workspace tests were added |
+| Refresh rotation | JWT/session checks, replay-family revocation, transaction-based replacement | IMPLEMENTED; the nine-file auth/security suite passed 47 tests before workspace tests were added |
+| Logout | Trusted-Origin check, revoke matching refresh session and clear cookie | IMPLEMENTED; the nine-file auth/security suite passed 47 tests before workspace tests were added; CSRF cookie clear path is a known mismatch |
+| Current-user endpoint | Bearer JWT, active-account and exact active database-session checks | IMPLEMENTED; the nine-file auth/security suite passed 47 tests before workspace tests were added |
 | CSRF and Origin defenses | Exact `CLIENT_URL` Origin required on auth POST routes; signed double-submit token on refresh/logout | IMPLEMENTED; HMAC-SHA256 token is bound to the refresh token |
 | API/auth rate limits | API 300/15m; login 5/15m, registration 5/hour, refresh 30/15m per IP | IMPLEMENTED with default in-memory store; not shared across instances |
-| Workspace creation slice | Workspace/member models, validation, transactional service and controller | PARTIAL; no route, integration test, or workspace authorization |
-| Workspace RBAC, projects, tasks | Multi-tenant collaboration domains | PLANNED |
+| Workspace management | Create/list/details/update/soft-delete with membership checks and limited role enforcement | IMPLEMENTED; developer reports workspace regression tests pass; not rerun for this docs update |
+| Workspace member administration | Member listing/removal, invitations, role management, ownership transfer and recovery | PLANNED |
+| Projects, tasks and broader authorization | Private projects, tasks, and project/workspace resource policies | PLANNED |
 | Socket.IO | Authorized real-time delivery | PLANNED |
 | Frontend product UI | Router, auth UI, dashboards and API integration | PLANNED; current app is a starter |
 
@@ -64,13 +65,16 @@ TeamSync uses a modular monolith: the frontend calls a versioned REST API; Expre
 flowchart LR
   Browser["React/Vite starter"] -->|"REST /api/v1"| Express["Express application"]
   Express --> Middleware["Helmet · CORS · JSON · cookies · errors"]
-  Middleware --> Routes["Health and auth routes"]
-  Routes --> Controllers["Controllers"]
-  Controllers --> Services["Auth services"]
-  Services --> Models["Mongoose User and Session models"]
-  WorkspaceCode["Workspace models/service/controller<br/>not mounted"] -.-> Models
-  Models --> MongoDB[("MongoDB")]
-  Services --> Tokens["JWT and SHA-256 helpers"]
+  Middleware --> Routes["Health, auth and workspace routes"]
+  Routes --> AuthControllers["Auth controllers"]
+  AuthControllers --> AuthServices["Auth services"]
+  AuthServices --> AuthModels["Mongoose User and Session models"]
+  Routes --> WorkspaceControllers["Workspace controllers"]
+  WorkspaceControllers --> WorkspaceServices["Workspace services"]
+  WorkspaceServices --> WorkspaceModels["Workspace and WorkspaceMember models"]
+  AuthModels --> MongoDB[("MongoDB")]
+  WorkspaceModels --> MongoDB
+  AuthServices --> Tokens["JWT and SHA-256 helpers"]
 ```
 
 For module responsibilities and request/database/auth flows, see [System Architecture](docs/05_SYSTEM_ARCHITECTURE.md).
@@ -81,9 +85,9 @@ For module responsibilities and request/database/auth flows, see [System Archite
 backend/src/config/       dotenv and Zod configuration
 backend/src/database/     Mongoose connection
 backend/src/middleware/   auth and error middleware
-backend/src/modules/      auth, health, users, and partial workspace creation slice
+backend/src/modules/      auth, health, users, and workspace management
 backend/src/utils/        JWT and refresh-token hash helpers
-backend/tests/integration/ MongoDB transaction, auth HTTP/service and rate-limit tests
+backend/tests/integration/ MongoDB transaction, auth/security and workspace tests
 frontend/src/              starter app plus scaffolding
 docs/                      canonical product and engineering docs
 ```
@@ -157,10 +161,15 @@ All current paths are mounted beneath `/api/v1`.
 | `POST /api/v1/auth/refresh` | Refresh cookie, `csrfToken` cookie and matching `X-CSRF-Token` header | Rotates a session and issues replacement refresh/CSRF cookies |
 | `POST /api/v1/auth/logout` | Refresh cookie, `csrfToken` cookie and matching `X-CSRF-Token` header | Attempts single-session revocation; clears cookies |
 | `GET /api/v1/auth/me` | Bearer access token | Returns current active user's profile DTO |
+| `POST /api/v1/workspaces` | Bearer access token and trusted Origin | Creates workspace and OWNER membership atomically |
+| `GET /api/v1/workspaces` | Bearer access token | Lists the caller's non-deleted workspaces with membership roles |
+| `GET /api/v1/workspaces/:workspaceId` | Bearer access token | Returns details for a workspace the caller belongs to |
+| `PATCH /api/v1/workspaces/:workspaceId` | Bearer access token; OWNER/ADMIN | Updates workspace name and/or description |
+| `DELETE /api/v1/workspaces/:workspaceId` | Bearer access token; OWNER only | Soft-deletes the workspace |
 
-All four auth POST routes require `Origin` matching `new URL(CLIENT_URL).origin`; refresh and logout additionally require a signed double-submit CSRF token. Login issues the browser-readable `csrfToken` cookie, bound to the refresh token. Clients must send the same value in the `X-CSRF-Token` header for refresh/logout. The HMAC-SHA256 signature uses required `CSRF_SECRET`, and tokens expire after seven days; successful refresh rotates both cookies. A general in-memory IP limiter applies to `/api/v1` (300 requests per 15 minutes), with stricter login (5/15 minutes), registration (5/hour) and refresh (30/15 minutes) limits. Exceeding a limit returns HTTP 429; standard `RateLimit-*` headers are enabled. The default in-memory store is suitable for a single-process setup but is not shared across instances; multi-instance production deployments need a shared store. Health, logout and `/auth/me` have no route-specific limiter, though the global API limiter still applies. Access JWTs are bound to a database session, which is checked on protected requests; revoking a session (including logout) invalidates its access tokens immediately, while independent device sessions remain active. The app does not configure production proxy trust. Workspace model/service/controller code exists, but no workspace route or authorization is active. See [API Documentation](docs/07_API_DOCUMENTATION.md) for current endpoint contracts. Logout-all-devices and workspace/resource authorization are not implemented.
+All four auth POST routes require `Origin` matching `new URL(CLIENT_URL).origin`; refresh and logout additionally require a signed double-submit CSRF token. Login issues the browser-readable `csrfToken` cookie, bound to the refresh token. Clients must send the same value in the `X-CSRF-Token` header for refresh/logout. The HMAC-SHA256 signature uses required `CSRF_SECRET`, and tokens expire after seven days; successful refresh rotates both cookies. A general in-memory IP limiter applies to `/api/v1` (300 requests per 15 minutes), with stricter login (5/15 minutes), registration (5/hour) and refresh (30/15 minutes) limits. Exceeding a limit returns HTTP 429; standard `RateLimit-*` headers are enabled. The default in-memory store is suitable for a single-process setup but is not shared across instances; multi-instance production deployments need a shared store. Health, logout and `/auth/me` have no route-specific limiter, though the global API limiter still applies. Access JWTs are bound to a database session, which is checked on protected requests; revoking a session (including logout) invalidates its access tokens immediately, while independent device sessions remain active. The app does not configure production proxy trust. Workspace endpoints enforce membership visibility and the documented update/delete role checks; member administration, invitations, ownership transfer and project/resource authorization are not implemented. See [API Documentation](docs/07_API_DOCUMENTATION.md) for current endpoint contracts. Logout-all-devices and broader workspace/resource authorization are not implemented.
 
-The complete backend integration command, `node --test tests/integration/*.test.js`, passed 47 tests on 2026-11-16 against the configured disposable test database. This result is specific to that run and does not establish production readiness.
+An earlier run of `node --test tests/integration/*.test.js` passed 47 tests on 2026-11-16 against the configured disposable test database, before four workspace integration files were added. The current 13-file suite has not been independently rerun for this documentation update; this test history does not establish production readiness.
 
 ## Documentation
 

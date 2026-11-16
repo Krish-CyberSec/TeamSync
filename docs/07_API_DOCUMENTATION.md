@@ -1,7 +1,7 @@
 # API Documentation
 
 **Base path:** `/api/v1`
-**Status:** Implemented routes and auth middleware verified against source (2026-11-15)
+**Status:** Implemented routes and middleware verified against source (2026-11-16)
 
 ## Contents
 
@@ -13,13 +13,14 @@
 - [Refresh](#post-apiv1authrefresh)
 - [Logout](#post-apiv1authlogout)
 - [Current user](#get-apiv1authme)
+- [Workspace management](#workspace-management)
 - [Planned API](#planned-api)
 
 ## Conventions
 
-Requests and responses use JSON except the refresh token, which is carried only by a cookie. There is no global authentication middleware: Bearer authentication is applied only to `GET /auth/me`; refresh/logout use the refresh cookie. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout also require a valid CSRF cookie/header pair. CORS is configured with `CLIENT_URL` and credentials.
+Requests and responses use JSON except the refresh token, which is carried only by a cookie. Authentication is applied per route: Bearer authentication protects `GET /auth/me` and all workspace endpoints; refresh/logout use the refresh cookie. Registration, login, refresh and logout require a trusted `Origin`; workspace creation also requires a trusted Origin. Refresh and logout require a valid CSRF cookie/header pair. CORS is configured with `CLIENT_URL` and credentials.
 
-For these four auth POST routes, the accepted Origin is `new URL(CLIENT_URL).origin`. A missing or non-matching `Origin` returns HTTP 403. This check is a CSRF defense, not authentication; CORS alone is not a CSRF defense. `POST /auth/refresh` and `POST /auth/logout` additionally require the signed double-submit CSRF token described below.
+For auth POST routes and `POST /workspaces`, the accepted Origin is `new URL(CLIENT_URL).origin`. A missing or non-matching `Origin` returns HTTP 403. This check is a CSRF defense, not authentication; CORS alone is not a CSRF defense. `POST /auth/refresh` and `POST /auth/logout` additionally require the signed double-submit CSRF token described below.
 
 Success responses use:
 
@@ -302,10 +303,133 @@ Access JWTs contain `sid`, the database Session ID used when the token was issue
 
 The middleware verifies signature, issuer, algorithm, expiry, access-token type and `sid`; validates the user and session ObjectIds; loads the current active user; then requires the exact matching database Session to exist, be unrevoked and have `expiresAt` in the future. It attaches a limited DTO, including `sessionId`, to `req.user`. The database check makes session revocation effective for access tokens on protected requests. It does not implement workspace/project/resource authorization.
 
+## Workspace management
+
+All five endpoints below are mounted under `/api/v1/workspaces` and require `Authorization: Bearer <access-jwt>`. They are subject to the general 300-requests-per-IP-per-15-minutes API limit and have no workspace-specific limiter. The access middleware validates the JWT, active user and matching unrevoked, unexpired database Session. Workspace membership is checked separately; a valid JWT alone does not grant workspace access. All workspace request objects use strict Zod validation where applicable, so unknown fields are rejected.
+
+### `POST /api/v1/workspaces`
+
+**Authentication:** Bearer access token. **Origin:** Must match `new URL(CLIENT_URL).origin`. **Request body:** Strict JSON object.
+
+| Field | Validation |
+|---|---|
+| `name` | String, trimmed, 2–80 characters |
+| `slug` | String, trimmed and lowercased, 2–80 characters; lowercase letters/digits separated by single hyphens |
+| `description` | Optional string, trimmed, maximum 500 characters; defaults to an empty string |
+
+Unknown fields are rejected. The workspace and creator's `OWNER` membership are inserted in one MongoDB transaction.
+
+**Success — 201**
+
+```json
+{
+  "success": true,
+  "message": "Workspace created successfully",
+  "data": {
+    "workspace": {
+      "id": "<workspace-id>",
+      "name": "<name>",
+      "slug": "<slug>",
+      "description": "<description>",
+      "createdBy": "<user-id>",
+      "createdAt": "<timestamp>"
+    }
+  }
+}
+```
+
+| Status | Meaning |
+|---:|---|
+| 400 | Invalid body or unknown field |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session (after trusted-Origin validation passes) |
+| 403 | Origin is missing or does not match the configured trusted Origin |
+| 409 | Duplicate slug (MongoDB duplicate-key error) |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### `GET /api/v1/workspaces`
+
+**Authentication:** Bearer access token. **Request body:** None.
+
+Only workspaces associated with the authenticated user's WorkspaceMember records are returned. Deleted workspaces are excluded. Results are ordered by membership `joinedAt` descending; each workspace includes the caller's `role` and `joinedAt`.
+
+**Success — 200:** `{ "success": true, "message": "Workspaces retrieved successfully", "data": { "workspaces": [...] } }`. Each array item contains `id`, `name`, `slug`, `description`, `createdBy`, `role`, `joinedAt`, `createdAt` and `updatedAt`.
+
+| Status | Meaning |
+|---:|---|
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### `GET /api/v1/workspaces/:workspaceId`
+
+**Authentication:** Bearer access token. **Request body:** None.
+
+The caller must be a member of the active workspace. All workspace roles can view it. Non-members and deleted/missing workspaces receive the same 404 response.
+
+**Success — 200:** `{ "success": true, "message": "Workspace retrieved successfully", "data": { "workspace": { ... } } }`. The `workspace` object contains `id`, `name`, `slug`, `description`, `createdBy`, the caller's `role` and `joinedAt`, and `createdAt` and `updatedAt`.
+
+| Status | Meaning |
+|---:|---|
+| 400 | `workspaceId` is not a valid MongoDB ObjectId |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session |
+| 404 | Workspace is missing, deleted, or caller is not a member |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### `PATCH /api/v1/workspaces/:workspaceId`
+
+**Authentication:** Bearer access token; active workspace membership required. OWNER and ADMIN may update; MANAGER and MEMBER receive 403. **Request body:** Strict JSON object containing at least one of:
+
+| Field | Validation |
+|---|---|
+| `name` | Optional string, trimmed, 2–80 characters |
+| `description` | Optional string, trimmed, maximum 500 characters |
+
+Unknown fields, including `slug`, `createdBy` and `role`, are rejected. Neither the slug nor creator nor membership role is changed by this endpoint.
+
+**Success — 200:** `{ "success": true, "message": "Workspace updated successfully", "data": { "workspace": { ... } } }`. The workspace object contains `id`, `name`, `slug`, `description`, `createdBy`, the caller's `role`, `createdAt` and `updatedAt`.
+
+| Status | Meaning |
+|---:|---|
+| 400 | Invalid ObjectId, empty body, invalid field value or unexpected field |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session |
+| 403 | Caller is a workspace member but is not OWNER or ADMIN; this role check occurs before checking whether the workspace is active |
+| 404 | Workspace is missing/deleted for an OWNER/ADMIN, or caller is not a member |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### `DELETE /api/v1/workspaces/:workspaceId`
+
+**Authentication:** Bearer access token; OWNER role required. **Request body:** None.
+
+Deletion is soft: the workspace status changes to `DELETED` and `deletedAt` is set. The endpoint does not permanently delete the workspace or membership records. ADMIN, MANAGER and MEMBER cannot delete. Deleted workspaces no longer appear in list/details. Repeated deletion by the OWNER returns 404; other member roles are rejected with 403 before active-workspace state is checked. No recovery or permanent purge endpoint is implemented.
+
+**Success — 200:** `{ "success": true, "message": "Workspace deleted successfully" }`.
+
+| Status | Meaning |
+|---:|---|
+| 400 | `workspaceId` is not a valid MongoDB ObjectId |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session |
+| 403 | Caller is a workspace member but is not OWNER |
+| 404 | Workspace is missing/deleted or caller is not a member |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### Implemented workspace role matrix
+
+| Capability | OWNER | ADMIN | MANAGER | MEMBER |
+|---|---:|---:|---:|---:|
+| View workspace | Yes | Yes | Yes | Yes |
+| Update workspace name/description | Yes | Yes | No | No |
+| Soft-delete workspace | Yes | No | No | No |
+
+This matrix describes only implemented workspace endpoints. Invitations, member listing/removal, role management, ownership transfer, workspace recovery, projects and project/task authorization are not implemented.
+
 ## User-reported manual checks
 
 The project owner previously reported Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, password hashing, login 200 and invalid credentials 401. These are owner-reported manual results, not automated coverage and were not repeated during this documentation-only task.
 
 ## Planned API
 
-There is no registered workspace endpoint. Workspace model, validation, creation service and controller files exist, but no workspace routes file is mounted in `app.js`; workspace creation is not an active API contract. Workspace membership administration/RBAC, invitations, project/member, task/comment, notification, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.
+Workspace creation, listing, details, updates and soft deletion are active API contracts above. Workspace member listing/removal, invitations, role management, ownership transfer, recovery, projects, tasks, comments, notifications, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.

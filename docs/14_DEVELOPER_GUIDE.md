@@ -25,14 +25,14 @@ backend/src/
   modules/auth/                  auth routes/controller/schemas/service/Session
   modules/health/                health route/controller
   modules/users/                 User model
-  modules/workspaces/            Workspace/member models, validation, transactional creation service and controller; no route
+  modules/workspaces/            routes, controller, service, validation and Workspace/member models
   utils/                         JWT signing/verifying and SHA-256 token hash
 backend/tests/integration/       nine transaction, auth service/HTTP, CSRF and rate-limit test files
 frontend/src/                    React/Vite starter and scaffolding
 docs/                            Product, architecture, API, security and operations docs
 ```
 
-Only health and auth have active route groups. Workspace model/validation/service/controller files implement a transactional creation slice, but no workspace routes file is mounted and the slice has no tests or authorization. Projects, tasks, notifications and chat directories are placeholders. The frontend is not yet a product client. Auth POST routes apply exact trusted-Origin checks to register/login/refresh/logout and IP-based in-memory limits to login/register/refresh.
+Health, auth and workspace route groups are active. Workspace routes require Bearer authentication; creation also checks trusted Origin. Workspace membership controls visibility, with OWNER/ADMIN updates and OWNER-only soft deletion. Member administration and project/resource authorization remain unimplemented. Projects, tasks, notifications and chat directories are placeholders. The frontend is not yet a product client. Auth POST routes apply exact trusted-Origin checks to register/login/refresh/logout and IP-based in-memory limits to login/register/refresh.
 
 ## Development workflow
 
@@ -85,7 +85,7 @@ Current code uses `try/catch` and forwards failures with `next(error)`, allowing
 
 ### 4. Register routes
 
-Add method/path mappings in `<domain>.routes.js`, then mount the router in `backend/src/app.js` beneath `/api/v1`. Apply authentication middleware to protected routes. Authentication only establishes identity; implement resource/workspace authorization separately before accessing tenant data.
+Add method/path mappings in `<domain>.routes.js`, then mount the router in `backend/src/app.js` beneath `/api/v1`. Apply authentication middleware to protected routes. Authentication establishes identity; separately enforce membership and resource/workspace policy before accessing tenant data. The workspace module is a current example of route-level membership and role checks, but does not implement project/resource authorization.
 
 Document active method/path, auth/cookie requirements, request schema, response and expected error codes in `docs/07_API_DOCUMENTATION.md`.
 
@@ -104,13 +104,13 @@ The handler logs full 5xx Error objects to console today; production logging red
 
 Use `node:test` and `node:assert/strict`. Place integration tests under `backend/tests/integration/`, isolate generated records, and clean up in `after` hooks. Transaction tests need a replica set or sharded cluster. Ensure each test database is disposable; the current transaction test uses `MONGO_URI`'s selected DB, while auth/logout suites select `teamsync_test`.
 
-Nine integration files currently cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service, logout HTTP, refresh HTTP with CSRF rotation, CSRF token unit cases, and general/route-specific rate limits. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
+Thirteen integration files cover transaction commit/rollback, refresh rotation/replay/concurrency, registration/login HTTP, logout service/HTTP, refresh HTTP with CSRF rotation, CSRF token unit cases, general/route-specific rate limits, and workspace creation/listing, details, updates and deletion. Exact coverage and commands are in [Testing Strategy](09_TESTING_STRATEGY.md). Run from `backend/` with an isolated disposable replica-set database for MongoDB-backed files:
 
 ```powershell
 node --test tests/integration/*.test.js
 ```
 
-No npm test script exists. The complete command `node --test tests/integration/*.test.js` passed 47 tests on 2026-11-16 against the configured disposable replica-set test database. Workspace files have no tests, rate-limit headers and the exact CSRF logout-cookie path are not asserted, and broader Bearer failure cases remain uncovered.
+No npm test script exists. The auth/security suite passed 47 tests on 2026-11-16 before the four workspace files were added. The developer reports the workspace regression suite passed; this update did not independently rerun it, and the current full 13-file suite has not been reported as rerun. Rate-limit headers and the exact CSRF logout-cookie path are not asserted, and broader Bearer failure cases remain uncovered.
 
 ## Security conventions
 
@@ -122,7 +122,7 @@ No npm test script exists. The complete command `node --test tests/integration/*
 - The general API limiter is 300/IP/15 minutes; login is 5/IP/15 minutes, registration 5/IP/hour and refresh 30/IP/15 minutes. Standard `RateLimit-*` headers are enabled, and default in-memory stores are not shared across instances; the app has no production `trust proxy` setting.
 - The CSRF cookie is issued at `Path=/` but logout clears it at `/api/v1/auth`; this path mismatch may prevent browser-side removal and needs a source fix plus an exact-path regression test.
 - Enforce account/session state and, for product resources, workspace/project authorization on the server.
-- Do not treat the current workspace creation controller/service as workspace authorization; no workspace API route or RBAC check is implemented.
+- Workspace endpoints implement membership-scoped visibility, OWNER/ADMIN updates and OWNER-only deletion. Do not treat this limited policy as project/resource authorization; cross-workspace resource isolation remains to be implemented and tested.
 - Use allowlisted DTOs/updates, bounded list operations and tests for negative access paths.
 - Do not claim production readiness: rate-limit shared storage/proxy configuration, broader CSRF strategy, log redaction, operational controls and security verification remain.
 

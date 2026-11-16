@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-16 — Workspace management documentation synchronized
+- Updated: README, project context, backend onboarding, PRD/SRS implementation notes, architecture, database schema, API reference, deployment/security documentation, testing strategy, roadmap and developer guide.
+- Documented: authenticated workspace create/list/details/update/soft-delete routes, strict request validation, transaction-backed OWNER membership creation, response shapes, membership visibility, OWNER/ADMIN update access and OWNER-only deletion.
+- Recorded: Workspace and WorkspaceMember fields/index declarations, soft-delete behavior, four workspace integration test files, and the distinction between implemented management and planned member/invitation/project capabilities.
+- Test evidence: developer reports the workspace regression suite passed; it was not independently rerun for this documentation update. The earlier 47-test run covered the nine auth/security files before workspace tests were added; the current 13-file suite is not claimed as passing.
+- No application source code, tests, dependencies or configuration changed.
+
 ## 2026-11-16 — CSRF, rate-limit and test verification documentation refreshed
 - Reconciled README, security, API, architecture, deployment, backend onboarding, test strategy and project context with the current CSRF and rate-limit source.
 - Documented the signed double-submit token structure, HMAC-SHA256 refresh-token binding, seven-day expiry, `csrfToken` cookie, `X-CSRF-Token` header, and required `CSRF_SECRET`.

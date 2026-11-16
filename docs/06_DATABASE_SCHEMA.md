@@ -7,15 +7,15 @@ The implemented `User` model stores `name`, `email`, `passwordHash` (`select: fa
 
 The implemented `Session` model has a required User reference, required indexed `familyId`, required hidden unique `tokenHash`, `expiresAt`, nullable `revokedAt`, nullable `replacedBySession`, nullable `lastUsedAt`, timestamps, and a TTL index on `expiresAt`. The TTL index asynchronously cleans up expired records; it is not an authorization check. Auth services create sessions, store SHA-256 token digests, rotate sessions transactionally, revoke active family members on a matching replay, and revoke a single session at logout. Access JWTs use the corresponding Session `_id` as `sid`; protected requests require that session to exist, be unrevoked, and be unexpired.
 
-The `Workspace` model stores required `name` (trimmed, 2–80 characters), required `slug` (trimmed, lowercase and unique; lowercase letters, digits and hyphens), optional `description` (trimmed, max 500, default `""`), required `createdBy` reference to User, and timestamps.
+The `Workspace` model stores required `name` (trimmed, 2–80 characters), required `slug` (trimmed, lowercase and unique; lowercase letters, digits and hyphens), `status` (`ACTIVE` or `DELETED`, default `ACTIVE`), nullable `deletedAt` (default `null`), optional `description` (trimmed, max 500, default `""`), required `createdBy` reference to User, and timestamps. The API validation additionally constrains the slug to 2–80 characters and single-hyphen-separated lowercase alphanumeric segments.
 
 The `WorkspaceMember` model stores required `workspace` and `user` references, required `role` (`OWNER`, `ADMIN`, `MANAGER`, `MEMBER`; default `MEMBER`), `joinedAt` (default current time), and timestamps. It declares a unique compound index on `{ workspace: 1, user: 1 }`; no membership `status` field is present in this model.
 
-`workspace.validation.js` requires a strict object: trimmed `name` (2–80), lowercase trimmed `slug` (2–80, letters/digits/single hyphens), and optional trimmed `description` (max 500, default empty). `workspace.service.js` creates a Workspace and its creator's `OWNER` WorkspaceMember inside one MongoDB transaction. The controller validates `req.body`, takes the creator ID from `req.user.id`, and returns a 201 DTO. However, no workspace route is registered, no workspace integration tests exist, and workspace authorization/RBAC is not implemented. Physical MongoDB index creation and live transaction execution were not verified in this documentation update.
+`workspace.validation.js` requires a strict create object: trimmed `name` (2–80), lowercase trimmed `slug` (2–80, letters/digits/single hyphens), and optional trimmed `description` (max 500, default empty). The strict update object permits only `name` and/or `description`; at least one must be supplied. `workspace.service.js` creates a Workspace and its creator's `OWNER` WorkspaceMember inside one MongoDB transaction. The controller validates request bodies and takes the creator ID from `req.user.id`. The mounted API supports create, member-scoped list/details, role-restricted update, and OWNER-only soft deletion. Physical MongoDB index creation and transaction behavior against a live database were not independently verified in this documentation update.
 
 ## Implemented models
 
-The four schemas above (`User`, `Session`, `Workspace`, and `WorkspaceMember`) exist in source. Workspace creation code is not yet exposed by a route or verified by integration tests.
+The four schemas above (`User`, `Session`, `Workspace`, and `WorkspaceMember`) exist in source. Four workspace integration files cover the implemented management routes; the developer reports the workspace regression suite passed, but it was not independently rerun for this documentation update.
 
 ## Planned R1 fields and collection designs
 
@@ -36,7 +36,7 @@ Event, Reminder, Attachment, Document, TimeEntry, ProjectTemplate, direct/group 
 
 ## Relationships
 
-The User/Session/Workspace/WorkspaceMember relationships exist in current model definitions; the remaining relationships below describe planned collections.
+The User/Session/Workspace/WorkspaceMember relationships exist in current model definitions; the remaining relationships below describe planned collections. A user-to-workspace relationship is represented by WorkspaceMember rather than a direct embedded workspace list on User.
 
 User 1—N Session; User 1—N WorkspaceMember; Workspace 1—N WorkspaceMember; Workspace 1—N Project; Project 1—N ProjectMember; Project 1—N Task; personal Task belongs to one owner and has no project; Task 1—N TaskComment; project Conversation 1—N Message; User 1—N Notification; Workspace/Project 1—N Activity.
 
