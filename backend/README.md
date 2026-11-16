@@ -1,6 +1,6 @@
 # TeamSync backend
 
-The backend is an ES-module Node.js/Express modular monolith. It currently implements public health and auth routes, MongoDB persistence, short-lived session-bound access JWTs, HttpOnly refresh cookies, server-side refresh sessions, token rotation, replay-family revocation, database session checks on `/me`, and centralized error responses. Workspace creation code is partially implemented, but no workspace route or authorization is active.
+The backend is an ES-module Node.js/Express modular monolith. It implements public health and auth routes plus authenticated workspace create/list/details/update/soft-delete routes. Auth includes MongoDB persistence, short-lived session-bound access JWTs, HttpOnly refresh cookies, server-side refresh sessions, token rotation, replay-family revocation, database session checks on `/me`, and centralized error responses. Workspace authorization currently covers membership-scoped visibility, OWNER/ADMIN updates and OWNER-only deletion; member administration and project/resource authorization are not implemented.
 
 ## Contents
 
@@ -31,15 +31,15 @@ backend/
 │   │   ├── auth/                      # routes, controller, validation, service, Session model
 │   │   ├── health/                    # health route/controller
 │   │   ├── users/                     # User model
-│   │   └── workspaces/                # models, validation, transactional creation service and controller; no routes
+│   │   └── workspaces/                # routes, controller, service, validation and models
 │   └── utils/
 │       ├── token.js                   # JWT sign/verify
 │       ├── csrf-token.js              # HMAC-SHA256 CSRF token generation/verification
 │       └── token-hash.js              # SHA-256 refresh-token digest
-└── tests/integration/                 # nine transaction, auth/session, CSRF and rate-limit test files
+└── tests/integration/                 # auth/session, workspace, CSRF, transaction and rate-limit tests
 ```
 
-Routes map HTTP methods/paths. Controllers validate request bodies, call services, set/clear cookies, and construct DTOs. Services implement user credential checks and session workflows. The workspace controller/service/model/validation files implement only workspace creation; there is no workspace router, no route mount in `app.js`, and no workspace integration test. The controller expects an authenticated `req.user`, but no workspace route currently supplies it.
+Routes map HTTP methods/paths and attach authentication and route-specific guards. Controllers validate request bodies, call services, set/clear cookies, and construct DTOs. Services implement user credential/session workflows and workspace membership/role checks. Workspace creation and its OWNER membership use a MongoDB transaction. All five workspace routes are mounted at `/api/v1/workspaces`.
 
 ## Request and persistence flow
 
@@ -52,14 +52,14 @@ flowchart LR
   Cookies --> Route["/api/v1 route"]
   Route --> Auth["Bearer auth when required"]
   Auth --> Controller["Controller and Zod schema"]
-  Controller --> Service["Auth service"]
-  Service --> Models["Mongoose User / Session"]
+  Controller --> Service["Auth or workspace service"]
+  Service --> Models["Mongoose User / Session / Workspace / WorkspaceMember"]
   Models --> DB[("MongoDB")]
   Controller -. errors via next .-> Error["Central error handler"]
   Error --> Response["JSON response"]
 ```
 
-The app's order is CORS, Helmet, JSON parsing, cookie parsing, health/auth routers, then the error handler. Login creates a server session before returning the access token and setting the refresh cookie. Refresh changes old/new session documents in a MongoDB transaction. The server awaits MongoDB connection before `listen`; on SIGINT/SIGTERM it closes the HTTP server then the Mongoose connection.
+The app's order is CORS, Helmet, JSON parsing, cookie parsing, the general `/api/v1` limiter, health/auth/workspace routers, then the error handler. Login creates a server session before returning the access token and setting the refresh cookie. Refresh changes old/new session documents in a MongoDB transaction. Workspace creation transactionally inserts the workspace and creator's OWNER membership. The server awaits MongoDB connection before `listen`; on SIGINT/SIGTERM it closes the HTTP server then the Mongoose connection.
 
 ## Dependencies and commands
 
@@ -103,10 +103,15 @@ All current endpoints are mounted under `/api/v1`.
 | POST | `/auth/refresh` | Refresh cookie | Verify, transactionally rotate session, return new access token and cookie |
 | POST | `/auth/logout` | Refresh cookie plus valid `csrfToken` cookie/header | Revoke matching active session when possible, clear cookies, return success |
 | GET | `/auth/me` | Bearer access token | Load active user and return profile DTO |
+| POST | `/workspaces` | Bearer access token and trusted Origin | Create workspace and creator OWNER membership in one transaction |
+| GET | `/workspaces` | Bearer access token | List caller's workspaces with membership role; deleted workspaces excluded |
+| GET | `/workspaces/:workspaceId` | Bearer access token | Return details for a workspace the caller belongs to |
+| PATCH | `/workspaces/:workspaceId` | Bearer access token; OWNER/ADMIN | Update name and/or description |
+| DELETE | `/workspaces/:workspaceId` | Bearer access token; OWNER only | Soft-delete workspace |
 
 See [API reference](../docs/07_API_DOCUMENTATION.md) for request schemas and response/error formats.
 Register, login, refresh and logout require an `Origin` matching `new URL(CLIENT_URL).origin`; refresh and logout additionally require a valid `csrfToken` cookie matching the `X-CSRF-Token` header and bound to the refresh cookie. CSRF failures return 403. A general 300/IP/15-minute limiter is mounted on `/api/v1`; login (5/IP/15 minutes), registration (5/IP/hour) and refresh (30/IP/15 minutes) also have route-specific limits. Standard `RateLimit-*` headers are enabled; legacy `X-RateLimit-*` headers are disabled. The in-memory counters are not shared across instances.
-There is no active workspace API route; the creation controller/service are not exposed through the router.
+Workspace endpoints are subject to the general API limiter. Their role checks do not implement invitations, member administration, ownership transfer, recovery, project authorization or resource-level access control.
 
 ## Authentication behavior
 
@@ -120,8 +125,8 @@ There is no active workspace API route; the creation controller/service are not 
 
 ## Tests and limitations
 
-Nine Node built-in integration test files exist. They cover transaction commit/rollback; rotation, invalid JWT, replay-family revocation, concurrent refresh attempts, suspended users and explicit session expiry; registration/login HTTP validation and cookie behavior; logout service and HTTP behavior including CSRF checks, access-token revocation, multi-device isolation and expired database sessions; CSRF token generation/verification and refresh integration; and general/route-specific rate limits. The complete command `node --test tests/integration/*.test.js` passed all 47 tests on 2026-11-16 against the configured disposable test database.
+Thirteen Node built-in integration test files exist. Nine auth/security/transaction files cover transaction commit/rollback; rotation, invalid JWT, replay-family revocation, concurrent refresh attempts, suspended users and explicit session expiry; registration/login HTTP validation and cookie behavior; logout service and HTTP behavior including CSRF checks, access-token revocation, multi-device isolation and expired database sessions; CSRF token generation/verification and refresh integration; and general/route-specific rate limits. Four workspace files cover creation/listing, detail access, updates and soft deletion. The earlier nine-file auth/security run passed 47 tests on 2026-11-16 before workspace files were added. The developer reports the complete workspace regression suite passed; this update did not independently rerun it, and the current 13-file suite has not been reported as rerun.
 
-MongoDB-backed tests require a disposable replica-set-capable database. Auth/logout suites select `teamsync_test`, while the transaction test uses the database named in the URI and creates `teamsync_transaction_probe` there. Do not point that URI at production/shared data. The logout HTTP suite exercises `/auth/me` with active, revoked and expired sessions; malformed-token/user-status/database-error paths remain uncovered. Workspace creation has no tests.
+MongoDB-backed tests require a disposable replica-set-capable database. Auth/logout suites select `teamsync_test`, while the transaction test uses the database named in the URI and creates `teamsync_transaction_probe` there. Do not point that URI at production/shared data. The logout HTTP suite exercises `/auth/me` with active, revoked and expired sessions; malformed-token/user-status/database-error paths remain uncovered. Workspace tests do not verify transaction rollback or duplicate-slug behavior.
 
 The rate limiters use their default in-memory stores; counters reset on process restart and are not shared across instances. No production proxy trust policy is configured. The CSRF cookie is issued at `Path=/` but the logout controller attempts to clear it at `Path=/api/v1/auth`, so the browser may retain the cookie; this path mismatch needs correction and a strict test. Rate-limit tests assert 429 status and message, not `RateLimit-*` headers. Shared rate-limit storage, logout-all-devices and production cookie/security-header review remain outstanding. Per-session access-token revocation is implemented through the Session lookup. This is not a claim of production readiness.
