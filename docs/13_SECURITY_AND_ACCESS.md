@@ -1,7 +1,7 @@
 # Security and Access Model
 
 **Approved R1 baseline:** 2026-11-13
-**Implementation review:** 2026-11-15
+**Implementation review:** 2026-11-16
 
 ## Contents
 
@@ -34,7 +34,7 @@ The backend contains a working auth/session foundation, but it is not a fully ha
 | API/auth rate limits | Implemented: API 300/15m, login 5/15m, registration 5/hour, refresh 30/15m; default in-memory stores |
 | Production proxy trust configuration | Not configured in the app |
 | Workspace/project/resource authorization | Not implemented |
-| Automated auth/CSRF/rate-limit tests | Partial; nine files contain source assertions for sessions, auth HTTP/service, CSRF token and route checks, and general/route-specific 429 behavior; full-suite execution was not verified here |
+| Automated auth/CSRF/rate-limit tests | Nine integration files; full command passed 47 tests on 2026-11-16 against the configured disposable test database. Rate-limit response headers are enabled in code but are not asserted by the rate-limit tests. |
 
 ## Implemented identity controls
 
@@ -79,7 +79,7 @@ Logout updates only the Session identified by the refresh cookie. Access tokens 
 
 `POST /api/v1/auth/refresh` and `POST /api/v1/auth/logout` also use `requireCsrfToken`. The client must send the readable `csrfToken` cookie value in `X-CSRF-Token`; both values must exist and match, and a valid `refreshToken` cookie must also be present. The middleware verifies the token against that refresh-token value and returns HTTP 403 when a token is missing, mismatched, invalid, expired or bound to another refresh token.
 
-The token format is `timestamp.nonce.signature`. The nonce is generated from 32 random bytes. The signature is HMAC-SHA256 over `timestamp.nonce.refreshToken`, keyed by required `CSRF_SECRET` (minimum 32 characters). Verification rejects malformed components, non-integer/future timestamps and tokens older than seven days. It decodes the signatures, checks their equal length, then compares them with Node's `crypto.timingSafeEqual`.
+The token format is `timestamp.nonce.signature`. The nonce is generated from 32 random bytes and encoded as base64url. The signature is HMAC-SHA256 over `timestamp.nonce.refreshToken`, keyed by required `CSRF_SECRET` (minimum 32 characters). Verification rejects malformed components, non-integer/future timestamps and tokens older than seven days. It decodes the signatures, checks their equal length, then compares them with Node's `crypto.timingSafeEqual`.
 
 Login creates the CSRF token after issuing the refresh session and sets it alongside the refresh cookie. Successful refresh rotates the refresh session, generates a new CSRF token bound to the replacement refresh token, and sets both replacement cookies; the prior CSRF token will no longer validate against the new refresh cookie. Registration does not issue these cookies.
 
@@ -95,7 +95,7 @@ The general `apiLimiter` is mounted on `/api/v1` and permits 300 requests per IP
 | `POST /api/v1/auth/register` | 5 | 1 hour |
 | `POST /api/v1/auth/refresh` | 30 | 15 minutes |
 
-All limiters use `express-rate-limit` with standard `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers enabled; these report the policy window, quota, remaining requests and seconds until reset. Legacy `X-RateLimit-*` headers are disabled. Exceeding a limit returns HTTP 429 with a JSON `success: false` response and a limit-specific message. No custom store is supplied, so each limiter uses its default in-memory store: counts reset on process restart and are not shared by multiple backend instances. Logout, `/auth/me` and health have no route-specific limiter but remain subject to the 300/15m API limit. Production multi-instance deployments should use a shared store. The app does not set Express `trust proxy`; deployments behind a reverse proxy must review and explicitly configure trusted hops so limits use the intended client IP without trusting arbitrary forwarded headers. The `loopback` proxy setting in the registration/login test is test-only.
+All limiters use `express-rate-limit` with standard `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers enabled; these report the policy window, quota, remaining requests and seconds until reset. Legacy `X-RateLimit-*` headers are disabled. Exceeding a limit returns HTTP 429 with a JSON `success: false` response and a limit-specific message. The integration tests verify the 429 status and message, but do not assert the rate-limit headers. No custom store is supplied, so each limiter uses its default in-memory store. This is suitable for a single-process setup; counts reset on process restart and are not shared by multiple backend instances. Logout, `/auth/me` and health have no route-specific limiter but remain subject to the 300/15m API limit. Production multi-instance deployments should use a shared store. The app does not set Express `trust proxy`; deployments behind a reverse proxy must review and explicitly configure trusted hops so limits use the intended client IP without trusting arbitrary forwarded headers. The `loopback` proxy setting in the registration/login test is test-only.
 
 ## Server-side sessions
 
@@ -187,7 +187,7 @@ Authorization must follow verified identity → active WorkspaceMember → works
 | Cookie deployment | `Secure` depends only on `NODE_ENV`; `SameSite=Lax` and cross-origin behavior need deployment review | Test exact production frontend/API origins, TLS termination and cookie scope |
 | Security headers | Helmet is enabled with defaults; policies not reviewed for product assets | Review CSP and deployment headers before release |
 | Logs | Error handler logs full 5xx Error objects; startup/DB failures log error messages | Redact and validate production log fields |
-| Verification | Nine test files include CSRF and general API rate-limit assertions; the full DB-backed suite was not run in this documentation sync. Rate-limit headers and strict CSRF-cookie clearing path are not asserted | Run full tests against an isolated replica-set DB and expand failure/concurrency coverage |
+| Verification | Full nine-file integration suite passed 47 tests on 2026-11-16 against a disposable test database. Rate-limit headers and the exact CSRF-cookie clearing path are not asserted by tests | Re-run in CI against isolated MongoDB; add header and exact cookie-path regression assertions |
 | Workspace authorization | Workspace schemas and create service/controller exist, but no route, role enforcement, membership checks or tenant isolation | Add protected routes and server-side policies with cross-workspace negative tests before exposing product APIs |
 | Project authorization | No project/resource checks | Implement server-side policies before adding protected project routes |
 

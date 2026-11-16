@@ -1,7 +1,7 @@
 # Testing Strategy
 
 **R1 baseline:** frozen 2026-11-13
-**Backend test inventory:** inspected 2026-11-15
+**Backend test inventory:** verified 2026-11-16
 
 ## Test setup
 
@@ -23,7 +23,7 @@ The tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRE
 | `tests/integration/rate-limit.test.js` | HTTP 429 on login request 6, registration request 6 and refresh request 31; checks each response message. It does not assert rate-limit headers. |
 | `tests/integration/api-rate-limit.test.js` | HTTP 404 responses reach the app through request 300; request 301 receives the general API limiter's 429 response and message. It does not assert rate-limit headers. |
 
-These test descriptions reflect assertions in source. The non-database files `csrf-token.test.js`, `api-rate-limit.test.js` and `rate-limit.test.js` were run during this documentation update: 10 tests passed. The full suite, including MongoDB-backed tests, was not run, so a full-suite pass is unverified. No workspace model/service/controller tests, strict CSRF-cookie clearing-path assertion, or explicit database-failure test for logout exists.
+These test descriptions reflect assertions in source. The complete integration suite was run on 2026-11-16 with the configured disposable replica-set test database: 47 tests passed, zero failed. This verifies the current suite in that environment; it does not establish production readiness. No workspace model/service/controller tests, strict CSRF-cookie clearing-path assertion, rate-limit header assertions, or explicit database-failure test for logout exists.
 
 ## Running tests safely
 
@@ -49,7 +49,7 @@ Run all nine files:
 node --test tests/integration/*.test.js
 ```
 
-MongoDB transactions require a replica set or sharded deployment; a standalone server is insufficient. The transaction suite deletes inserted documents but does not drop its probe collection.
+The complete command above passed 47 tests on 2026-11-16. Before running it elsewhere, verify that `MONGO_URI` points to a disposable replica-set-capable database: auth suites use the `teamsync_test` database, while `transaction.test.js` uses the database named in `MONGO_URI` and leaves its probe collection in place. Never point it at production or shared data. MongoDB transactions require a replica set or sharded deployment; a standalone server is insufficient.
 
 ## Coverage gaps
 

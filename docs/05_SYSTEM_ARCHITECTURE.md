@@ -1,7 +1,7 @@
 # System Architecture
 
 **Product architecture:** R1 baseline frozen 2026-11-13
-**Implementation snapshot:** 2026-11-15
+**Implementation snapshot:** 2026-11-16
 
 ## Contents
 
@@ -22,7 +22,7 @@ TeamSync uses a modular monolith: one backend application with domain modules, a
 |---|---|---|
 | Backend | Node.js ES modules, Express, MongoDB/Mongoose, Zod, bcrypt, jsonwebtoken, dotenv, Helmet, CORS, cookie-parser, express-rate-limit | Socket.IO |
 | Frontend | React/Vite/Tailwind CSS v4 starter; Axios and TanStack Query client instances are scaffolded | React Router, Zustand and Lucide React are declared but unused; no router/provider/store, product UI or API/auth integration |
-| Testing | Node `node:test`, `node:assert/strict`, nine integration files covering transaction, auth HTTP/service, CSRF and rate limits | Workspace tests, strict CSRF-cookie clearing-path coverage and broader security/failure paths |
+| Testing | Node `node:test`, `node:assert/strict`, nine integration files covering transaction, auth HTTP/service, CSRF and rate limits; 47 tests passed on 2026-11-16 | Workspace tests, strict CSRF-cookie clearing-path and rate-limit-header coverage, and broader security/failure paths |
 
 ## High-level architecture
 
@@ -85,16 +85,16 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 
 | Module | Status | Evidence / limits |
 |---|---|---|
-| Auth | Implemented but not fully tested | Register/login/refresh/logout and `/me` exist; nine test files contain relevant assertions; the full DB-backed suite was not run for this documentation update. |
+| Auth | Implemented; covered by current integration suite | Register/login/refresh/logout and `/me` exist; the full nine-file suite passed 47 tests on 2026-11-16. Broader failure paths remain. |
 | Health | Implemented | Public health route/controller exist; a prior smoke check returned HTTP 200, but it was not rerun here. |
-| Users | Implemented but not fully tested | User model, bcrypt hook and auth flows exist; test assertions cover registration/hash/DTO behavior, but pass status is unverified. |
+| Users | Implemented; covered by current integration suite | User model, bcrypt hook and auth flows exist; registration/hash/DTO behavior is covered, and the full suite passed 47 tests on 2026-11-16. |
 | Workspaces | Partially implemented | Models, create validation, transaction service and controller exist; no routes, integration tests, membership authorization or tenant isolation. |
 | Projects | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Tasks | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Notifications | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Chat | Planned / not started | Placeholder directory only; no model, service, routes or Socket.IO integration. |
 | Database | Implemented but not fully tested | Mongoose connection and User/Session/Workspace/WorkspaceMember schemas exist; live database/index creation and workspace transaction tests were not verified. |
-| Middleware | Implemented but not fully tested | Auth, errors, Origin/CSRF checks, general API rate limiting and auth-route limits exist; tests cover selected paths, but full-suite execution and broader failure paths remain unverified. |
+| Middleware | Implemented; selected paths tested | Auth, errors, Origin/CSRF checks, general API rate limiting and auth-route limits exist; full suite passed 47 tests on 2026-11-16. Rate-limit header behavior and exact CSRF clear-cookie path are not asserted. |
 | Frontend | Partially implemented | React/Vite/Tailwind starter plus Axios/Query client instances; no router/provider wiring, product UI, auth flow or API integration. |
 
 ### Responsibilities and rationale
@@ -153,7 +153,7 @@ sequenceDiagram
 
 ### Configuration and startup
 
-`backend/src/config/env.js` imports `dotenv/config`, parses `process.env` using Zod, reports field errors and exits on invalid required configuration. `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are required (minimum 32 characters each); `MONGO_URI` is schema-optional but required for successful connection. `server.js` awaits `connectDB()` before opening the HTTP listener. On SIGINT/SIGTERM it stops the HTTP server and then closes Mongoose. There is no explicit shutdown timeout.
+`backend/src/config/env.js` imports `dotenv/config`, parses `process.env` using Zod, reports field errors and exits on invalid required configuration. `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `CSRF_SECRET` are required (minimum 32 characters each); `MONGO_URI` is schema-optional but required for successful connection. `CSRF_SECRET` is a dedicated HMAC-SHA256 signing key for the refresh-token-bound double-submit token. `server.js` awaits `connectDB()` before opening the HTTP listener. On SIGINT/SIGTERM it stops the HTTP server and then closes Mongoose. There is no explicit shutdown timeout.
 
 ## Authentication lifecycle
 
@@ -199,7 +199,7 @@ sequenceDiagram
   Note over TX,S: Failure aborts transaction writes
 ```
 
-MongoDB transactions require a replica set or sharded deployment. A dedicated test database is required for integration tests. The transaction test uses the database named in `MONGO_URI`, so a production/shared URI must never be used for tests.
+MongoDB transactions require a replica set or sharded deployment. A dedicated test database is required for integration tests. The full nine-file integration suite passed 47 tests on 2026-11-16 against the configured disposable test database. The transaction test uses the database named in `MONGO_URI`, so a production/shared URI must never be used for tests. The rate-limit tests verify rejection status/message but do not assert headers; the logout test's `Path=/` match is not a strict assertion of the CSRF clear-cookie path.
 
 Conditional session update claims a refresh session once. If a previously revoked token with a matching stored hash is reused, the service revokes all active sessions sharing its `familyId`; the family identifier itself is not changed. The concurrency test expects one rotation to succeed, the competing request to fail, and the token family to end revoked. These integration tests exist but were not run during this documentation update.
 

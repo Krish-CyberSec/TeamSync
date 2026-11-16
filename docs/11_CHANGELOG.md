@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-16 — CSRF, rate-limit and test verification documentation refreshed
+- Reconciled README, security, API, architecture, deployment, backend onboarding, test strategy and project context with the current CSRF and rate-limit source.
+- Documented the signed double-submit token structure, HMAC-SHA256 refresh-token binding, seven-day expiry, `csrfToken` cookie, `X-CSRF-Token` header, and required `CSRF_SECRET`.
+- Documented the 300/15-minute general API limiter and login, registration and refresh limits; clarified that standard `RateLimit-*` headers are enabled and default in-memory counters are not shared across instances.
+- Ran `node --test tests/integration/*.test.js` against the user-confirmed disposable test database: 47 passed, 0 failed.
+- Remaining test gaps: assertions for rate-limit headers and strict CSRF-cookie clearing path; the current logout controller clears the CSRF cookie at `/api/v1/auth` although it is issued at `/`.
+
 ## 2026-11-15 — CSRF and API rate-limit documentation synchronized
 - Updated: root/backend onboarding, API reference, architecture, security, testing, deployment, roadmap and project context to match the implemented signed double-submit CSRF mechanism and general API rate limiter.
 - Documented: required `CSRF_SECRET` (minimum 32 characters), token HMAC-SHA256 binding/expiry/validation, `csrfToken` cookie and `X-CSRF-Token` header, refresh/logout enforcement, and standard rate-limit headers.

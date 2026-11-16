@@ -110,7 +110,7 @@ Nine integration files currently cover transaction commit/rollback, refresh rota
 node --test tests/integration/*.test.js
 ```
 
-No npm test script exists. The CSRF-unit, general API rate-limit and auth-route rate-limit files passed (10 tests total) during this documentation update; the full DB-backed suite was not run, so full-suite pass status is unverified. Workspace files have no tests, and broader Bearer failure cases remain uncovered.
+No npm test script exists. The complete command `node --test tests/integration/*.test.js` passed 47 tests on 2026-11-16 against the configured disposable replica-set test database. Workspace files have no tests, rate-limit headers and the exact CSRF logout-cookie path are not asserted, and broader Bearer failure cases remain uncovered.
 
 ## Security conventions
 
