@@ -28,3 +28,30 @@ export const createWorkspaceSchema = z
             .default(""),
     })
     .strict();
+
+
+
+export const updateWorkspaceSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, "Workspace name must be at least 2 characters")
+      .max(80, "Workspace name cannot exceed 80 characters")
+      .optional(),
+
+    description: z
+      .string()
+      .trim()
+      .max(500, "Description cannot exceed 500 characters")
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.description !== undefined,
+    {
+      message: "At least one field must be provided",
+    }
+  );

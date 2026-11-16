@@ -7,7 +7,7 @@ import healthRouter from "./modules/health/health.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { apiLimiter } from "./middleware/rate-limit.middleware.js";
-
+import workspaceRoutes from "./modules/workspaces/workspace.routes.js";
 const app = express();
 
 
@@ -35,6 +35,9 @@ app.use("/api/v1/health", healthRouter);
 
 // Importing the authentication routes
 app.use("/api/v1/auth", authRoutes);
+
+// Importing the workspace routes
+app.use("/api/v1/workspaces", workspaceRoutes);
 
 // Error handling middleware to catch and respond to errors in a standardized format
 app.use(errorHandler);

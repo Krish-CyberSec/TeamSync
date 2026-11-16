@@ -19,6 +19,17 @@ const workspaceSchema = new mongoose.Schema(
             trim: true,
             match: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
         },
+        status: {
+            type: String,
+            enum: ["ACTIVE", "DELETED"],
+            default: "ACTIVE",
+            index: true,
+        },
+
+        deletedAt: {
+            type: Date,
+            default: null,
+        },
 
         description: {
             type: String,
