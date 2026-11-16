@@ -28,7 +28,7 @@ This code applies in TeamSync repository spaces, including issues, pull requests
 
 ## Reporting
 
-Report conduct concerns privately to **[COMMUNITY CONDUCT CONTACT]**. This placeholder must be replaced with a monitored contact before the project advertises a private reporting channel. Do not report conduct incidents in public issues if that would disclose personal or sensitive information. For security vulnerabilities, use the separate process in [SECURITY.md](SECURITY.md), not this contact placeholder.
+Report conduct concerns privately to **K.singh.codebase@gmail.com**. Do not report conduct incidents in public issues if that would disclose personal or sensitive information. For security vulnerabilities, use the separate process in [SECURITY.md](SECURITY.md), not this contact placeholder.
 
 Reports should include a description of the behavior, where and when it occurred, and any relevant context. Share only information needed to review the concern. The maintainer will review reports as practicable and respect reporter privacy to the extent possible, subject to safety and applicable law.
 
