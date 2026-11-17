@@ -5,7 +5,10 @@ import {
     getWorkspaceDetails,
     updateWorkspaceDetails,
     deleteWorkspace,
+    getWorkspaceMembers,
+    inviteWorkspaceMember,
 } from "./workspace.service.js";
+import { inviteWorkspaceMemberSchema } from "./workspace.validation.js";
 import { createWorkspaceSchema, updateWorkspaceSchema, } from "./workspace.validation.js";
 export const createWorkspaceController = async (req, res, next) => {
     try {
@@ -191,4 +194,123 @@ export const deleteWorkspaceController = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+
+export const getWorkspaceMembersController = async (req, res, next) => {
+    try {
+        const { workspaceId } = req.params;
+        const userId = req.user.id;
+
+        // Validate workspace ID before querying MongoDB.
+        if (!mongoose.isValidObjectId(workspaceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid workspace ID.",
+            });
+        }
+
+        const members = await getWorkspaceMembers(workspaceId, userId);
+
+        // A missing membership or deleted workspace returns null.
+        if (!members) {
+            return res.status(404).json({
+                success: false,
+                message: "Workspace not found.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "Workspace members retrieved successfully.",
+            data: {
+                members,
+                total: members.length,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+
+export const inviteWorkspaceMemberController = async (req, res, next) => {
+    try {
+        const { workspaceId } = req.params;
+
+        if (!mongoose.isValidObjectId(workspaceId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid workspace ID",
+            });
+        }
+
+        const validation = inviteWorkspaceMemberSchema.safeParse(req.body);
+
+        if (!validation.success) {
+            return res.status(400).json({
+                success: false,
+                message: "Validation failed",
+                errors: validation.error.issues,
+            });
+        }
+
+        const result = await inviteWorkspaceMember({
+            workspaceId,
+            inviterUserId: req.user.id,
+            email: validation.data.email,
+        });
+
+        if (result.status === "NOT_FOUND") {
+            return res.status(404).json({
+                success: false,
+                message: "Workspace not found",
+            });
+        }
+
+        if (result.status === "FORBIDDEN") {
+            return res.status(403).json({
+                success: false,
+                message: "Only workspace owners and admins can invite members",
+            });
+        }
+
+        if (result.status === "USER_NOT_FOUND") {
+            return res.status(404).json({
+                success: false,
+                message: "Registered user not found",
+            });
+        }
+
+        if (result.status === "SELF_INVITATION") {
+            return res.status(400).json({
+                success: false,
+                message: "You cannot invite yourself",
+            });
+        }
+
+        if (result.status === "ALREADY_MEMBER") {
+            return res.status(409).json({
+                success: false,
+                message: "User is already a workspace member",
+            });
+        }
+
+        if (result.status === "INVITATION_PENDING") {
+            return res.status(409).json({
+                success: false,
+                message: "An invitation is already pending for this user",
+            });
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: "Workspace invitation created successfully",
+            data: {
+                invitation: result.invitation,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
 };

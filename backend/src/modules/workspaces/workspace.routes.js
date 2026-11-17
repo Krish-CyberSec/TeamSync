@@ -9,6 +9,8 @@ import {
   getWorkspaceDetailsController,
   updateWorkspaceController,
   deleteWorkspaceController,
+  getWorkspaceMembersController,
+  inviteWorkspaceMemberController,
 } from "./workspace.controller.js";
 const router = Router();
 
@@ -18,6 +20,12 @@ router.post(
   requireTrustedOrigin,
   authenticate,
   createWorkspaceController
+);
+
+router.get(
+    "/:workspaceId/members",
+    authenticate,
+    getWorkspaceMembersController
 );
 
 router.get(
@@ -32,6 +40,7 @@ router.get(
   getWorkspaceDetailsController
 );
 
+
 router.patch(
   "/:workspaceId",
   authenticate,
@@ -43,5 +52,13 @@ router.delete(
   authenticate,
   deleteWorkspaceController
 );
+
+router.post(
+    "/:workspaceId/invitations",
+    requireTrustedOrigin,
+    authenticate,
+    inviteWorkspaceMemberController
+);
+
 
 export default router;

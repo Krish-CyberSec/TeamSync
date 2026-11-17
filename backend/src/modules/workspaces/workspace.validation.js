@@ -55,3 +55,12 @@ export const updateWorkspaceSchema = z
       message: "At least one field must be provided",
     }
   );
+
+  export const inviteWorkspaceMemberSchema = z.object({
+    email: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .email("Please provide a valid email address")
+        .max(254, "Email address is too long"),
+});

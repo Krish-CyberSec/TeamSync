@@ -22,9 +22,35 @@ const workspaceMemberSchema = new mongoose.Schema(
             required: true,
         },
 
-        joinedAt: {
+
+        status: {
+            type: String,
+            enum: ["PENDING", "ACCEPTED", "DECLINED"],
+            default: "ACCEPTED",
+            required: true,
+            index: true,
+        },
+
+        invitedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+
+        acceptedAt: {
             type: Date,
             default: Date.now,
+        },
+
+        declinedAt: {
+            type: Date,
+            default: null,
+        },
+
+
+        joinedAt: {
+            type: Date,
+            default: null,
         },
     },
     {

@@ -1,6 +1,6 @@
 
 import mongoose from "mongoose";
-
+import User from "../users/user.model.js";
 import Workspace from "./workspace.model.js";
 import WorkspaceMember from "./workspace-member.model.js";
 
@@ -36,6 +36,9 @@ export const createWorkspace = async ({
                         workspace: createdWorkspace._id,
                         user: userId,
                         role: "OWNER",
+                        status: "ACCEPTED",
+                        acceptedAt: new Date(),
+                        joinedAt: new Date(),
                     },
                 ],
                 { session }
@@ -51,7 +54,10 @@ export const createWorkspace = async ({
 };
 
 export const getUserWorkspaces = async (userId) => {
-    const memberships = await WorkspaceMember.find({ user: userId })
+    const memberships = await WorkspaceMember.find({
+        user: userId,
+        status: "ACCEPTED",
+    })
         .populate({
             path: "workspace",
             match: { status: { $ne: "DELETED" } },
@@ -80,6 +86,7 @@ export const getWorkspaceDetails = async (workspaceId, userId) => {
     const membership = await WorkspaceMember.findOne({
         workspace: workspaceId,
         user: userId,
+        status: "ACCEPTED",
     })
         .populate({
             path: "workspace",
@@ -114,6 +121,7 @@ export const updateWorkspaceDetails = async (
     const membership = await WorkspaceMember.findOne({
         workspace: workspaceId,
         user: userId,
+        status: "ACCEPTED",
     })
         .select("role")
         .lean();
@@ -165,6 +173,7 @@ export const deleteWorkspace = async (workspaceId, userId) => {
     const membership = await WorkspaceMember.findOne({
         workspace: workspaceId,
         user: userId,
+        status: "ACCEPTED",
     })
         .select("role")
         .lean();
@@ -199,4 +208,175 @@ export const deleteWorkspace = async (workspaceId, userId) => {
     }
 
     return { status: "DELETED" };
+};
+
+
+export const getWorkspaceMembers = async (workspaceId, userId) => {
+    // First, verify that the requesting user belongs to an active workspace.
+    const membership = await WorkspaceMember.findOne({
+        workspace: workspaceId,
+        user: userId,
+        status: "ACCEPTED",
+    })
+        .populate({
+            path: "workspace",
+            match: { status: { $ne: "DELETED" } },
+            select: "_id",
+        })
+        .lean();
+
+    if (!membership || !membership.workspace) {
+        return null;
+    }
+
+    // Fetch all members belonging to this workspace.
+    const members = await WorkspaceMember.find({
+        workspace: workspaceId,
+        status: "ACCEPTED",
+    })
+        .populate({
+            path: "user",
+            select: "name email",
+        })
+        .sort({ joinedAt: 1 })
+        .lean();
+
+    return members
+        .filter((member) => member.user)
+        .map((member) => ({
+            userId: member.user._id,
+            name: member.user.name,
+            email: member.user.email,
+            role: member.role,
+            joinedAt: member.joinedAt,
+        }));
+};
+
+
+export const inviteWorkspaceMember = async ({
+    workspaceId,
+    inviterUserId,
+    email,
+}) => {
+    // 1. Verify that the workspace exists and is active.
+    const workspace = await Workspace.findOne({
+        _id: workspaceId,
+        status: "ACTIVE",
+    })
+        .select("_id")
+        .lean();
+
+    if (!workspace) {
+        return { status: "NOT_FOUND" };
+    }
+
+    // 2. Verify that the inviter is an accepted OWNER or ADMIN.
+    const inviterMembership = await WorkspaceMember.findOne({
+        workspace: workspaceId,
+        user: inviterUserId,
+        status: "ACCEPTED",
+    })
+        .select("role")
+        .lean();
+
+    if (!inviterMembership) {
+        return { status: "NOT_FOUND" };
+    }
+
+    if (!["OWNER", "ADMIN"].includes(inviterMembership.role)) {
+        return { status: "FORBIDDEN" };
+    }
+
+    // 3. Find the registered user by normalized email.
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const invitedUser = await User.findOne({
+        email: normalizedEmail,
+    })
+        .select("_id email")
+        .lean();
+
+    if (!invitedUser) {
+        return { status: "USER_NOT_FOUND" };
+    }
+
+    // 4. Prevent users from inviting themselves.
+    if (invitedUser._id.toString() === inviterUserId.toString()) {
+        return { status: "SELF_INVITATION" };
+    }
+
+    // 5. Check whether a membership already exists.
+    const existingMembership = await WorkspaceMember.findOne({
+        workspace: workspaceId,
+        user: invitedUser._id,
+    });
+
+    if (existingMembership) {
+        if (existingMembership.status === "ACCEPTED") {
+            return { status: "ALREADY_MEMBER" };
+        }
+
+        if (existingMembership.status === "PENDING") {
+            return { status: "INVITATION_PENDING" };
+        }
+
+        // Reuse a declined membership instead of inserting a duplicate.
+        existingMembership.status = "PENDING";
+        existingMembership.role = "MEMBER";
+        existingMembership.invitedBy = inviterUserId;
+        existingMembership.acceptedAt = null;
+        existingMembership.declinedAt = null;
+        existingMembership.joinedAt = null;
+
+        await existingMembership.save();
+
+        return {
+            status: "INVITATION_CREATED",
+            invitation: {
+                id: existingMembership._id,
+                email: invitedUser.email,
+                status: existingMembership.status,
+            },
+        };
+    }
+
+    // 6. Create a new pending invitation.
+    let invitation;
+
+    try {
+        invitation = await WorkspaceMember.create({
+            workspace: workspaceId,
+            user: invitedUser._id,
+            role: "MEMBER",
+            status: "PENDING",
+            invitedBy: inviterUserId,
+            acceptedAt: null,
+            declinedAt: null,
+            joinedAt: null,
+        });
+    } catch (error) {
+        if (error.code === 11000) {
+            const currentMembership = await WorkspaceMember.findOne({
+                workspace: workspaceId,
+                user: invitedUser._id,
+            }).select("status").lean();
+
+            if (currentMembership?.status === "ACCEPTED") {
+                return { status: "ALREADY_MEMBER" };
+            }
+
+            return { status: "INVITATION_PENDING" };
+        }
+
+        throw error;
+    }
+
+    return {
+        status: "INVITATION_CREATED",
+        invitation: {
+            id: invitation._id,
+            email: invitedUser.email,
+            status: invitation.status,
+        },
+    };
 };

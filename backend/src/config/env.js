@@ -31,4 +31,5 @@ if (!parsedEnv.success) {
   process.exit(1);
 }
 
+
 export const env = Object.freeze(parsedEnv.data); // freeze the validated environment variables to prevent accidental modifications
