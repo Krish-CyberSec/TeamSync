@@ -1,7 +1,7 @@
 # Testing Strategy
 
 **R1 baseline:** frozen 2026-11-13
-**Backend test inventory:** verified 2026-11-16
+**Backend test inventory:** verified 2026-11-17
 
 ## Test setup
 
@@ -27,7 +27,7 @@ The tests require `NODE_ENV=test`, valid `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRE
 | `tests/integration/workspace-update.test.js` | OWNER and ADMIN can update; MANAGER and MEMBER are forbidden; non-member gets 404; invalid ObjectId, empty body, unexpected field and unauthenticated requests are rejected. |
 | `tests/integration/workspace-deletion.test.js` | OWNER soft deletion, role denial for other members, non-member/unauthenticated/invalid-ID errors, deleted-workspace exclusion from list/details, update rejection and repeated deletion 404. |
 
-These descriptions reflect assertions in source. The auth/security suite's earlier run on 2026-11-16 passed 47 tests across the then-existing nine files; that result predates the four workspace files and is not a result for the current 13-file suite. The developer reports the complete workspace regression suite passed, but the command/output was not available for independent verification in this documentation task. Neither result establishes production readiness.
+These descriptions reflect assertions in source. No integration test covers `GET /workspaces/:workspaceId/members` or `POST /workspaces/:workspaceId/invitations`; invitation validation, registered-user lookup, self-invitation, duplicate/pending conflicts, declined-row reuse, authorization, duplicate-key handling and response mapping therefore lack integration coverage. The auth/security suite's earlier run on 2026-11-16 passed 47 tests across the then-existing nine files; that result predates the four workspace files and is not a result for the current 13-file suite. The developer reports the complete workspace regression suite passed, but the command/output was not available for independent verification in this documentation task. Neither result establishes production readiness.
 
 ## Running tests safely
 
@@ -45,6 +45,10 @@ node --test tests/integration/auth-refresh.http.test.js
 node --test tests/integration/csrf-token.test.js
 node --test tests/integration/rate-limit.test.js
 node --test tests/integration/api-rate-limit.test.js
+node --test tests/integration/workspace-creation.test.js
+node --test tests/integration/workspace-details.test.js
+node --test tests/integration/workspace-update.test.js
+node --test tests/integration/workspace-deletion.test.js
 ```
 
 Run all thirteen files:
@@ -67,7 +71,8 @@ The complete command above has not been rerun against the current 13-file invent
 - JWT expiry, wrong issuer/type/algorithm/signature and mismatched claims beyond tested cases.
 - TTL cleanup timing/index creation and refresh-rotation rollback/failure behavior.
 - Workspace transaction rollback and duplicate-slug API behavior are not verified by the workspace integration files.
-- Workspace route tests cover role and membership boundaries, but cross-workspace project/resource isolation and all member-administration workflows remain unimplemented.
+- Workspace route tests do not cover accepted-member listing or invitation creation; add HTTP tests for positive and negative authorization, input normalization/validation, registered-user-only behavior, self-invitation, accepted/pending conflicts, declined-row reuse, duplicate-key races and actual response shapes.
+- Cross-workspace project/resource isolation, invitation acceptance/decline, email delivery, expiry/revocation, member removal, role changes and ownership transfer remain unimplemented or untested.
 
 ## Quality gates
 

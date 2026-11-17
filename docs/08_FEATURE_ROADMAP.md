@@ -1,7 +1,7 @@
 # Feature Roadmap
 
 **R1 product baseline frozen:** 2026-11-13
-**Implementation snapshot:** 2026-11-16
+**Implementation snapshot:** 2026-11-17
 
 ## Release scope
 
@@ -59,21 +59,26 @@ Status refers to implementation evidence in the repository. The developer report
 | Logout tests | IMPLEMENTED | Service coverage includes valid/invalid/repeated/device-specific/expired-token cases; HTTP coverage includes valid/missing/invalid cookies and trusted-Origin rejection; not run in this task. |
 | CSRF unit/HTTP tests | IMPLEMENTED | Unit assertions cover binding, tampering, malformed/missing/expired tokens; refresh/logout HTTP tests cover missing, mismatched and invalid tokens and refresh rotation. |
 | Rate-limit HTTP tests | IMPLEMENTED | Tests cover API request 301 and login/registration request 6 and refresh request 31 returning 429; response-header assertions remain absent. |
-| Workspace data models | IMPLEMENTED | Workspace and WorkspaceMember schemas include soft-delete metadata and role enum; unique slug and compound membership indexes are declared, not verified in the database. |
+| Workspace data models | IMPLEMENTED | Workspace and WorkspaceMember schemas include soft-delete metadata, role/status enums and invitation actor/timestamp fields; unique slug and compound membership indexes are declared, not verified in the database. |
 | Workspace creation | IMPLEMENTED | `POST /api/v1/workspaces` strictly validates input and transactionally creates workspace plus creator OWNER membership. |
 | Workspace listing | IMPLEMENTED | `GET /api/v1/workspaces` returns the authenticated user's memberships and excludes deleted workspaces. |
 | Workspace details | IMPLEMENTED | `GET /api/v1/workspaces/:workspaceId` requires membership; non-members and missing/deleted workspaces receive 404. |
 | Workspace updates | IMPLEMENTED | `PATCH /api/v1/workspaces/:workspaceId` allows OWNER/ADMIN to update name/description only; strict validation rejects unexpected fields. |
 | Workspace soft deletion | IMPLEMENTED | `DELETE /api/v1/workspaces/:workspaceId` is OWNER-only and sets `status=DELETED` and `deletedAt`; permanent deletion/recovery is not implemented. |
-| Workspace endpoint role checks | IMPLEMENTED | Membership and OWNER/ADMIN update and OWNER delete restrictions are enforced for the active workspace API only; this is not project/resource authorization. |
+| Workspace member listing | IMPLEMENTED | `GET /api/v1/workspaces/:workspaceId/members` is available to accepted members and returns accepted members only; it has no dedicated integration test. |
+| Workspace invitation creation | IMPLEMENTED | `POST /api/v1/workspaces/:workspaceId/invitations` permits accepted OWNER/ADMIN members to invite registered users, creates/reuses a PENDING MEMBER record and handles duplicate-key races. No invitation integration test exists; the current test suite was not run for this documentation update. |
+| Workspace endpoint role checks | IMPLEMENTED | Accepted-membership checks and OWNER/ADMIN update/invitation and OWNER delete restrictions are enforced for implemented workspace routes only; this is not project/resource authorization. |
+| Workspace membership status migration | IMPLEMENTED | `backend/scripts/migrations/001-backfill-workspace-membership-status.js` marks legacy rows missing `status` as ACCEPTED and copies `joinedAt` to `acceptedAt`; execution against a live database was not verified. |
+| Invitation acceptance / decline | PLANNED | No routes or service transitions from PENDING to ACCEPTED or DECLINED exist. |
+| Invitation email / expiry / revocation | PLANNED | No delivery, invitation token/hash, expiration or revocation implementation exists. |
 | Email verification / password reset | PLANNED | No routes, persistence flow or mail integration. |
 | Logout-all-devices | PLANNED | Logout revokes only the supplied session; no all-session operation. |
-| Workspace membership administration | PLANNED | Member listing/removal, invitations, role management and ownership transfer are not implemented. |
+| Workspace membership administration | IN PROGRESS | Accepted-member listing and invitation creation are implemented; member removal, role management and ownership transfer are not. |
 | Workspace recovery and permanent purge | PLANNED | Soft deletion exists; recovery, retention jobs and permanent deletion/data purge do not. |
 | Projects/tasks/comments/activity/notifications | PLANNED | No functional models, services or routes in these modules. |
 | Project chat / Socket.IO | PLANNED | No Socket.IO integration. |
 | Frontend product/auth integration | PLANNED | React starter only; no API/auth wiring. |
-| Workspace integration tests | IMPLEMENTED | Four files cover creation/listing, detail access, updates and deletion. Developer reports the workspace regression suite passes; this documentation update did not rerun it. |
+| Workspace integration tests | IMPLEMENTED | Four files cover creation/listing, detail access, updates and deletion. They do not cover member listing or invitations. Developer reports the workspace regression suite passes; this documentation update did not rerun it. |
 | Automated HTTP auth tests | IN PROGRESS | Register/login, refresh with CSRF rotation, logout, session-bound `/me` and limiter assertions exist; broader failure-path coverage remains. |
 
 The project owner reports manual Postman/MongoDB checks for registration 201, duplicate email 409, invalid registration 400, password hashing, login 200 and invalid credentials 401. These are owner-reported manual results, not automated coverage and were not repeated during this documentation task.
@@ -85,7 +90,7 @@ The project owner reports manual Postman/MongoDB checks for registration 201, du
 | Backend foundation | IMPLEMENTED | Node/npm, valid config, MongoDB | Config rejects invalid required values; DB gates listen; health returns 200; signals close server/DB | Verify live DB startup and operational shutdown |
 | Auth/session foundation | IN PROGRESS | MongoDB replica set for transactions | Register/login/refresh/logout/me behavior; session-bound access revocation; only refresh token hash persisted | Run integration tests against disposable DB; expand remaining failure cases |
 | Authentication hardening | IN PROGRESS | Auth/session foundation | Origin and CSRF checks plus general/route-specific rate limits are implemented; complete shared rate-limit/proxy deployment review, cookie/header/log review, logout-all-devices and broader revocation semantics | Run full integration suite against isolated replica-set DB; fix CSRF cookie clearing path; review trusted proxy configuration and shared storage; add remaining endpoint/security tests |
-| Core product | IN PROGRESS | Authentication and authorization | Workspace management plus invitation/member, project/task/comment/notification flows with tenant-isolation tests | Implement member/invitation flows and project/resource authorization, then continue remaining vertical slices |
+| Core product | IN PROGRESS | Authentication and authorization | Workspace management and invitation lifecycle, then project/task/comment/notification flows with tenant-isolation tests | Add focused member-list/invitation-creation HTTP tests; implement the approved token-backed invitation accept/decline lifecycle and remaining member administration; then implement project/resource authorization and continue vertical slices |
 | Collaboration | PLANNED | Project authorization and persistence | Project chat persists before delivery; unauthorized room/event access rejected | Add Socket.IO and real-time notifications |
 | Frontend integration | PLANNED | Stable API contracts and auth transport | Auth, workspace, project, task and notification UI works against API | Router/providers, API client, state and E2E tests |
 | Beta deployment | PLANNED | Tested vertical slice | Staging env, managed secrets, backup/restore, monitoring, error tracking and E2E smoke checks | Deployment config, runbooks, recovery test and limited beta |
@@ -97,7 +102,7 @@ This is a planning estimate based on approximately 2–3 development hours per d
 
 ### Beta launch gates
 
-1. Implement workspace member listing, invitations, invitation acceptance/rejection, member removal, role management and ownership transfer.
+1. Add integration tests for accepted-member listing and invitation creation, then implement the approved invitation acceptance/decline, email delivery, expiry/revocation lifecycle, member removal, role management and ownership transfer. Invitation creation exists but has no integration-test coverage.
 2. Define workspace recovery and permanent deletion/data-purge workflows before implementing them.
 3. Implement projects and project-level access control, including cross-workspace isolation tests.
 4. Implement task management and enforce personal-task privacy.

@@ -1,7 +1,7 @@
 # Security and Access Model
 
 **Approved R1 baseline:** 2026-11-13
-**Implementation review:** 2026-11-16
+**Implementation review:** 2026-11-17
 
 ## Contents
 
@@ -18,7 +18,7 @@
 
 ## Security posture
 
-The backend contains a working auth/session foundation and a limited workspace management API, but it is not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout, `/auth/me`, and workspace create/list/details/update/soft-delete routes exist. Access JWTs are bound to database sessions and the Bearer middleware checks that session on protected requests, so revocation and database-session expiry take effect before JWT expiry. Trusted-Origin checks protect auth POST routes and workspace creation; a signed double-submit CSRF token is additionally required on refresh and logout. General and route-specific IP rate limits are active with default in-memory stores. Shared rate-limit storage, explicit production proxy trust, email verification, logout-all-devices, workspace member administration and project/resource authorization remain unimplemented. Logout currently clears the CSRF cookie with a path different from its issue path.
+The backend contains a working auth/session foundation and a limited workspace management API, but it is not a fully hardened authentication or authorization system. Registration, login, refresh, single-device logout, `/auth/me`, workspace create/list/details/update/soft-delete/member-listing, and registered-user invitation-creation routes exist. Access JWTs are bound to database sessions and the Bearer middleware checks that session on protected requests, so revocation and database-session expiry take effect before JWT expiry. Trusted-Origin checks protect auth POST routes and workspace creation/invitation creation; a signed double-submit CSRF token is additionally required on refresh and logout. General and route-specific IP rate limits are active with default in-memory stores. Shared rate-limit storage, explicit production proxy trust, email verification, logout-all-devices, invitation acceptance/decline/delivery/expiry/revocation, member administration and project/resource authorization remain unimplemented. Logout currently clears the CSRF cookie with a path different from its issue path.
 
 | Control | Current state |
 |---|---|
@@ -33,7 +33,7 @@ The backend contains a working auth/session foundation and a limited workspace m
 | Origin validation | Implemented on register/login/refresh/logout; missing/mismatched Origin returns 403 |
 | API/auth rate limits | Implemented: API 300/15m, login 5/15m, registration 5/hour, refresh 30/15m; default in-memory stores |
 | Production proxy trust configuration | Not configured in the app |
-| Workspace endpoint authorization | Implemented for membership-scoped visibility, OWNER/ADMIN update and OWNER-only deletion; no member-management operations |
+| Workspace endpoint authorization | Implemented for `ACCEPTED` membership-scoped visibility/member listing, OWNER/ADMIN update and invitation creation, and OWNER-only deletion; invitation lifecycle and other member-management operations are not implemented |
 | Project/resource authorization | Not implemented |
 | Automated auth/CSRF/rate-limit tests | Nine original auth/security files passed 47 tests on 2026-11-16. Four workspace integration files were subsequently added; developer reports the workspace regression suite passes, but it was not independently rerun here. Rate-limit headers are enabled but not asserted. |
 
@@ -173,7 +173,9 @@ MongoDB transactions require a replica set or sharded deployment. Tests should u
 
 ## Authorization model
 
-For the implemented workspace API, each request first requires verified identity and then checks active workspace membership where applicable. All four roles can view a workspace; OWNER/ADMIN can update its name/description; only OWNER can soft-delete. A user without membership receives 404 on detail/update/delete requests. Workspace creation transactionally creates an OWNER membership for the creator. These checks do not implement invitation/member administration, role changes, ownership transfer, project access or general resource authorization. Ordinary project access still requires ProjectMember under the approved design, and personal tasks are intended to be owner-only; neither feature is implemented. A valid JWT and matching active session prove authenticated identity only, not resource access.
+For the implemented workspace API, each request first requires verified identity and then checks for an `ACCEPTED` WorkspaceMember where workspace access applies. All four roles can view a workspace and list accepted members; OWNER/ADMIN can update its name/description and create invitations; only OWNER can soft-delete. A user without an accepted membership receives 404 on member-scoped requests, including when a pending or declined WorkspaceMember row exists. Workspace creation transactionally creates an accepted OWNER membership for the creator.
+
+Invitation creation is restricted to accepted OWNER/ADMIN members and to already-registered users. It prevents self-invitation, conflicts with accepted membership or pending invitations, reuses a declined row, and handles a concurrent unique-index conflict (MongoDB code `11000`). Pending rows have MEMBER role, `status: PENDING`, `invitedBy`, and null acceptance/decline/join timestamps. This is only invitation creation: there is no acceptance/decline endpoint, token or token hash, expiry, email delivery or revocation. These endpoint checks do not implement role changes, ownership transfer, project access or general resource authorization. Ordinary project access still requires ProjectMember under the approved design, and personal tasks are intended to be owner-only; neither feature is implemented. A valid JWT and matching active session prove authenticated identity only, not resource access.
 
 ## Limitations and hardening
 
@@ -189,7 +191,7 @@ For the implemented workspace API, each request first requires verified identity
 | Security headers | Helmet is enabled with defaults; policies not reviewed for product assets | Review CSP and deployment headers before release |
 | Logs | Error handler logs full 5xx Error objects; startup/DB failures log error messages | Redact and validate production log fields |
 | Verification | Earlier nine-file auth/security integration suite passed 47 tests on 2026-11-16; four later workspace files are developer-reported as passing. Current full 13-file suite was not independently rerun. Rate-limit headers and exact CSRF-cookie clearing path are not asserted | Re-run current suite in CI against isolated MongoDB; add header and exact cookie-path regression assertions |
-| Workspace authorization | Workspace management routes enforce membership visibility and limited role checks; member administration and project/resource isolation are absent | Add cross-workspace negative tests and authorization policies before implementing project/resource APIs |
+| Workspace authorization | Implemented workspace routes enforce accepted-membership visibility and limited roles, but invitation lifecycle, member management and project/resource isolation remain absent | Add invitation/member route tests and cross-workspace negative tests and authorization policies before implementing project/resource APIs |
 | Project authorization | No project/resource checks | Implement server-side policies before adding protected project routes |
 
 Do not treat the current implementation as production-ready. See the [API reference](07_API_DOCUMENTATION.md), [testing strategy](09_TESTING_STRATEGY.md), and [roadmap](08_FEATURE_ROADMAP.md).

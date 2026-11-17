@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-17 — Workspace membership and invitation progress documented
+- Updated: project context, PRD/SRS implementation notes, architecture, database schema, API reference, security model, testing strategy, deployment guide and roadmap to match the current workspace source.
+- Documented: `WorkspaceMember` status/actor/timestamp fields and unique workspace/user index; accepted-member authorization; the registered-user invitation endpoint, response/error contracts, OWNER/ADMIN checks, email normalization, duplicate/self-invitation prevention, declined-row reuse and duplicate-key race handling.
+- Recorded: the membership-status backfill migration and safe execution cautions; invitation acceptance/decline, email delivery, token/expiry/revocation and member administration remain incomplete.
+- Test coverage: inspected the four workspace integration files; none covers member listing or invitation creation. No test command was run for this documentation-only update, and no new result is claimed.
+- Ticket: no matching feature ticket or ticket ID was identified in the checked-in documentation.
+- No application source code, environment files, dependencies or tests changed.
+
 ## 2026-11-16 — Workspace management documentation synchronized
 - Updated: README, project context, backend onboarding, PRD/SRS implementation notes, architecture, database schema, API reference, deployment/security documentation, testing strategy, roadmap and developer guide.
 - Documented: authenticated workspace create/list/details/update/soft-delete routes, strict request validation, transaction-backed OWNER membership creation, response shapes, membership visibility, OWNER/ADMIN update access and OWNER-only deletion.

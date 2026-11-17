@@ -1,7 +1,7 @@
 # System Architecture
 
 **Product architecture:** R1 baseline frozen 2026-11-13
-**Implementation snapshot:** 2026-11-16
+**Implementation snapshot:** 2026-11-17
 
 ## Contents
 
@@ -88,7 +88,7 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 | Auth | Implemented; covered by auth/security integration suite | Register/login/refresh/logout and `/me` exist; the nine-file auth/security suite passed 47 tests on 2026-11-16, before workspace files were added. Broader failure paths remain. |
 | Health | Implemented | Public health route/controller exist; a prior smoke check returned HTTP 200, but it was not rerun here. |
 | Users | Implemented; covered by auth integration tests | User model, bcrypt hook and auth flows exist; registration/hash/DTO behavior is covered. The earlier nine-file auth/security run passed 47 tests on 2026-11-16, before workspace files were added. |
-| Workspaces | Implemented management slice | Authenticated create/list/details/update/soft-delete routes and membership/role checks exist. Four integration test files cover the feature; developer reports the workspace regression suite passed, but it was not rerun for this documentation update. Member administration, invitations, recovery and project/resource authorization remain unimplemented. |
+| Workspaces | Implemented management and invitation-creation slice | Authenticated create/list/details/update/soft-delete, accepted-member listing and registered-user invitation creation exist. Four integration files cover creation/listing, details, update and deletion, but do not cover member listing or invitations; the current full suite was not rerun for this documentation update. Invitation acceptance/decline, email delivery, expiry/revocation, member removal, role management, recovery and project/resource authorization remain unimplemented. |
 | Projects | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Tasks | Planned / not started | Placeholder directory only; no model, service or routes. |
 | Notifications | Planned / not started | Placeholder directory only; no model, service or routes. |
@@ -103,8 +103,8 @@ Projects, tasks, notifications and chat directories currently contain placeholde
 |---|---|---|
 | Routes | Map HTTP method/path to controller; attach auth middleware where required | Keeps routing declarative |
 | Controllers | Parse request schemas, call services, set cookies/statuses, return safe DTOs | Isolates transport-specific behavior |
-| Services | Registration/login, refresh-session decisions, and workspace membership/role operations | Keeps business rules out of routes and persistence hooks |
-| Models | Define User, Session, Workspace and WorkspaceMember fields/index declarations | Centralizes persistence constraints |
+| Services | Registration/login, refresh-session decisions, and workspace membership, role and invitation-creation rules | Keeps business rules out of routes and persistence hooks |
+| Models | Define User, Session, Workspace and WorkspaceMember fields, membership states and index declarations | Centralizes persistence constraints; WorkspaceMember represents accepted/declined memberships and pending invitations |
 | Middleware | Authenticate Bearer access requests; map forwarded errors | Reuses cross-cutting behavior across routes |
 | Origin middleware | Require the configured frontend Origin on auth POST routes | Rejects missing or untrusted browser origins; it is a CSRF defense, not identity verification |
 | Rate-limit middleware | Apply 300 requests/15 minutes to `/api/v1`, plus route limits for login, registration and refresh | Bounds repeated requests; default stores are process-local |
@@ -120,10 +120,16 @@ Actual Express order from `backend/src/app.js`:
 2. Helmet security headers.
 3. JSON body parsing.
 4. `cookie-parser`.
-5. General IP rate limiter on `/api/v1`, then health/auth/workspace routers; auth routes apply route-specific rate limiting, trusted-Origin and CSRF checks, while workspace creation requires trusted Origin and all workspace routes require Bearer authentication.
+5. General IP rate limiter on `/api/v1`, then health/auth/workspace routers; auth routes apply route-specific rate limiting, trusted-Origin and CSRF checks, while workspace creation and invitation creation require trusted Origin and all workspace routes require Bearer authentication.
 6. Central error handler for errors forwarded with `next(error)`.
 
-The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout additionally require a refresh cookie and valid CSRF cookie/header pair. A general 300-per-15-minute IP limit applies to every `/api/v1` request; login, registration and refresh have stricter route limits. `authenticate` verifies both the JWT and its database session. The workspace router is mounted at `/api/v1/workspaces`; every route requires authentication, and create also requires trusted Origin. Workspace services enforce membership-based visibility and OWNER/ADMIN update and OWNER delete restrictions. These are endpoint-specific checks, not complete member-management or project/resource authorization.
+The auth router applies `authenticate` to `GET /me`. Registration, login, refresh and logout require a trusted `Origin`; refresh and logout additionally require a refresh cookie and valid CSRF cookie/header pair. A general 300-per-15-minute IP limit applies to every `/api/v1` request; login, registration and refresh have stricter route limits. `authenticate` verifies both the JWT and its database session. The workspace router is mounted at `/api/v1/workspaces`; every route requires authentication, and create and invitation creation also require trusted Origin. Workspace services require `ACCEPTED` membership for workspace visibility/member listing, OWNER/ADMIN for updates and invitation creation, and OWNER for deletion. These are endpoint-specific checks, not complete member-management or project/resource authorization.
+
+### Workspace membership and invitation creation
+
+`WorkspaceMember` is the authorization relationship between a user and workspace and also stores invitations for registered users. Workspace creation transactionally adds the creator as an `ACCEPTED` OWNER. Invitation creation adds or reuses a row as `PENDING` MEMBER, recording `invitedBy` and clearing acceptance/decline/join timestamps. A declined row can be reset to pending; an accepted membership and a pending invitation are conflicts. The unique `{ workspace: 1, user: 1 }` index backs up the service's duplicate checks against concurrent inserts.
+
+Only `ACCEPTED` membership satisfies the current workspace-access queries. This prevents a pending invite from granting access before the account is explicitly admitted; a signed-in identity alone is not workspace authorization. The current service has no invitation acceptance or decline operation, so the transition out of `PENDING` is not yet available through the API. Token-based invitation, expiration, email delivery, and revocation also remain future work.
 
 ```mermaid
 sequenceDiagram
@@ -205,4 +211,4 @@ Conditional session update claims a refresh session once. If a previously revoke
 
 ## Product boundaries
 
-The approved R1 modules include auth, users, workspaces, membership, invitations, projects, tasks, comments, notifications, activities, project chat and analytics. Auth, health, workspace management, and user/session/workspace persistence have active routes/models. Workspace read/update/delete roles are enforced for the implemented workspace endpoints. Member listing/management, invitations, ownership transfer, recovery, project/task authorization and broader tenant isolation remain requirements, not implemented capabilities. Calendar, attachments and direct/group messaging are deferred to later releases.
+The approved R1 modules include auth, users, workspaces, membership, invitations, projects, tasks, comments, notifications, activities, project chat and analytics. Auth, health, workspace management, accepted-member listing, invitation creation, and user/session/workspace persistence have active routes/models. Workspace read/update/delete and invitation-creation roles are enforced for the implemented endpoints. Invitation acceptance/decline, email delivery, expiry/revocation, member removal/role management, ownership transfer, recovery, project/task authorization and broader tenant isolation remain requirements, not implemented capabilities. Calendar, attachments and direct/group messaging are deferred to later releases.

@@ -1,7 +1,7 @@
 # API Documentation
 
 **Base path:** `/api/v1`
-**Status:** Implemented routes and middleware verified against source (2026-11-16)
+**Status:** Implemented routes and middleware verified against source (2026-11-17)
 
 ## Contents
 
@@ -14,13 +14,15 @@
 - [Logout](#post-apiv1authlogout)
 - [Current user](#get-apiv1authme)
 - [Workspace management](#workspace-management)
+- [List workspace members](#get-apiv1workspacesworkspaceidmembers)
+- [Create workspace invitation](#post-apiv1workspacesworkspaceidinvitations)
 - [Planned API](#planned-api)
 
 ## Conventions
 
-Requests and responses use JSON except the refresh token, which is carried only by a cookie. Authentication is applied per route: Bearer authentication protects `GET /auth/me` and all workspace endpoints; refresh/logout use the refresh cookie. Registration, login, refresh and logout require a trusted `Origin`; workspace creation also requires a trusted Origin. Refresh and logout require a valid CSRF cookie/header pair. CORS is configured with `CLIENT_URL` and credentials.
+Requests and responses use JSON except the refresh token, which is carried only by a cookie. Authentication is applied per route: Bearer authentication protects `GET /auth/me` and all workspace endpoints; refresh/logout use the refresh cookie. Registration, login, refresh and logout require a trusted `Origin`; workspace creation and invitation creation also require a trusted Origin. Refresh and logout require a valid CSRF cookie/header pair. CORS is configured with `CLIENT_URL` and credentials.
 
-For auth POST routes and `POST /workspaces`, the accepted Origin is `new URL(CLIENT_URL).origin`. A missing or non-matching `Origin` returns HTTP 403. This check is a CSRF defense, not authentication; CORS alone is not a CSRF defense. `POST /auth/refresh` and `POST /auth/logout` additionally require the signed double-submit CSRF token described below.
+For auth POST routes and workspace creation/invitation POST routes, the accepted Origin is `new URL(CLIENT_URL).origin`. A missing or non-matching `Origin` returns HTTP 403. This check is a CSRF defense, not authentication; CORS alone is not a CSRF defense. `POST /auth/refresh` and `POST /auth/logout` additionally require the signed double-submit CSRF token described below.
 
 Success responses use:
 
@@ -305,7 +307,7 @@ The middleware verifies signature, issuer, algorithm, expiry, access-token type 
 
 ## Workspace management
 
-All five endpoints below are mounted under `/api/v1/workspaces` and require `Authorization: Bearer <access-jwt>`. They are subject to the general 300-requests-per-IP-per-15-minutes API limit and have no workspace-specific limiter. The access middleware validates the JWT, active user and matching unrevoked, unexpired database Session. Workspace membership is checked separately; a valid JWT alone does not grant workspace access. All workspace request objects use strict Zod validation where applicable, so unknown fields are rejected.
+All seven endpoints below are mounted under `/api/v1/workspaces` and require `Authorization: Bearer <access-jwt>`. They are subject to the general 300-requests-per-IP-per-15-minutes API limit and have no workspace-specific limiter. The access middleware validates the JWT, active user and matching unrevoked, unexpired database Session. Workspace membership is checked separately; a valid JWT alone does not grant workspace access. Workspace creation and update use strict Zod schemas. Invitation input is Zod-validated but its schema is non-strict, so extra body fields are ignored.
 
 ### `POST /api/v1/workspaces`
 
@@ -416,6 +418,85 @@ Deletion is soft: the workspace status changes to `DELETED` and `deletedAt` is s
 | 429 | General API rate limit exceeded |
 | 500 | Unexpected database/server error |
 
+### `GET /api/v1/workspaces/:workspaceId/members`
+
+**Authentication:** Bearer access token; the caller must have an `ACCEPTED` membership in the active workspace. All workspace roles may list accepted members. **Request body:** None.
+
+Pending and declined memberships are not included. The response exposes each accepted member's user ID, name, email, role and `joinedAt`.
+
+**Success — 200**
+
+```json
+{
+  "success": true,
+  "message": "Workspace members retrieved successfully.",
+  "data": {
+    "members": [
+      {
+        "userId": "<user-id>",
+        "name": "<name>",
+        "email": "<email>",
+        "role": "MEMBER",
+        "joinedAt": "<timestamp>"
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+| Status | Meaning |
+|---:|---|
+| 400 | `workspaceId` is not a valid MongoDB ObjectId |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session |
+| 404 | Workspace is missing/deleted or caller does not have an accepted membership |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+### `POST /api/v1/workspaces/:workspaceId/invitations`
+
+**Authentication:** Bearer access token and an `ACCEPTED` OWNER or ADMIN membership in the active workspace. **Origin:** Must match `new URL(CLIENT_URL).origin` (the Origin guard runs before Bearer authentication). **Request body:** JSON with a valid registered user's email.
+
+V1 currently supports invitations only for users who already have an account. Zod trims and lowercases the email, validates its format and caps it at 254 characters. The service normalizes it again before lookup. Unknown body properties are ignored. Users cannot invite themselves; an accepted membership or another pending invitation conflicts. An existing declined membership is reused as a new pending invitation rather than creating a second membership row.
+
+New invitations use the existing `WorkspaceMember` record with `role: "MEMBER"`, `status: "PENDING"`, `invitedBy` set to the requester, and `acceptedAt`, `declinedAt` and `joinedAt` set to `null`. The unique `{ workspace, user }` index prevents duplicate rows; if a concurrent insert raises MongoDB error code `11000`, the service rereads the membership and returns the corresponding already-member or pending-invitation conflict.
+
+**Request body**
+
+```json
+{
+  "email": "member@example.com"
+}
+```
+
+**Success — 201**
+
+```json
+{
+  "success": true,
+  "message": "Workspace invitation created successfully",
+  "data": {
+    "invitation": {
+      "id": "<workspace-member-id>",
+      "email": "member@example.com",
+      "status": "PENDING"
+    }
+  }
+}
+```
+
+| Status | Response / meaning |
+|---:|---|
+| 400 | Invalid `workspaceId`, invalid email/body (`"Validation failed"` with Zod issue objects in `errors`), or self-invitation (`"You cannot invite yourself"`) |
+| 401 | Missing/invalid Bearer token, inactive/missing user, or invalid active session, provided the trusted-Origin check passes |
+| 403 | Origin is missing/untrusted, or requester is not an OWNER/ADMIN (`"Only workspace owners and admins can invite members"`) |
+| 404 | Workspace is missing/deleted or requester lacks an accepted membership (`"Workspace not found"`); email does not match a registered user (`"Registered user not found"`) |
+| 409 | Existing accepted membership (`"User is already a workspace member"`) or pending invitation (`"An invitation is already pending for this user"`) |
+| 429 | General API rate limit exceeded |
+| 500 | Unexpected database/server error |
+
+The route/controller handles Origin/auth middleware, ObjectId and body validation, service invocation, and HTTP response mapping. The service owns workspace/role checks, registered-user lookup, self/duplicate checks, declined-row reuse and duplicate-key race handling. Zod validates and normalizes input; `WorkspaceMember` supplies status/role constraints and the unique workspace/user index. No invitation email is sent. There is no acceptance, decline, expiration or revocation endpoint, and the current invitation record has no token or expiry field.
+
 ### Implemented workspace role matrix
 
 | Capability | OWNER | ADMIN | MANAGER | MEMBER |
@@ -423,8 +504,10 @@ Deletion is soft: the workspace status changes to `DELETED` and `deletedAt` is s
 | View workspace | Yes | Yes | Yes | Yes |
 | Update workspace name/description | Yes | Yes | No | No |
 | Soft-delete workspace | Yes | No | No | No |
+| List accepted workspace members | Yes | Yes | Yes | Yes |
+| Create workspace invitation | Yes | Yes | No | No |
 
-This matrix describes only implemented workspace endpoints. Invitations, member listing/removal, role management, ownership transfer, workspace recovery, projects and project/task authorization are not implemented.
+This matrix describes only implemented workspace endpoints. Member removal, role management, ownership transfer, invitation acceptance/decline/expiration/revocation, workspace recovery, projects and project/task authorization are not implemented.
 
 ## User-reported manual checks
 
@@ -432,4 +515,4 @@ The project owner previously reported Postman/MongoDB checks for registration 20
 
 ## Planned API
 
-Workspace creation, listing, details, updates and soft deletion are active API contracts above. Workspace member listing/removal, invitations, role management, ownership transfer, recovery, projects, tasks, comments, notifications, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.
+Workspace creation, listing, details, updates, soft deletion, accepted-member listing and invitation creation are active API contracts above. Invitation acceptance/decline, email delivery, expiration/revocation, member removal, role management, ownership transfer, recovery, projects, tasks, comments, notifications, project chat, dashboard, email verification, password reset and logout-all-devices endpoints remain planned. See the [R1 API plan](02_PRD.md) and [roadmap](08_FEATURE_ROADMAP.md). Do not use planned routes as active contracts.
