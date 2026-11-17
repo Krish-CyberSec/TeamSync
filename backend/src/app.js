@@ -2,6 +2,7 @@ import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import csrf from "csurf";
 import { env } from "./config/env.js";
 import healthRouter from "./modules/health/health.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
@@ -26,6 +27,10 @@ app.use(express.json());
 
 // Parse incoming cookies
 app.use(cookieParser());
+
+// CSRF protection for cookie-based authenticated requests
+const csrfProtection = csrf({ cookie: true });
+app.use(csrfProtection);
 
 // Apply general rate limiting to all API endpoints
 app.use("/api/v1", apiLimiter);
